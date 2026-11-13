@@ -42,7 +42,7 @@ export async function createTestApp(overrides: Partial<Record<string, string>> =
     .overrideProvider(MAIL_TRANSPORT)
     .useValue(mail)
     .compile();
-  const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: process.env.TEST_LOGS ? ['error'] : false });
+  const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: process.env.TEST_LOGS ? ['error'] : false, rawBody: true });
   configureApp(app, env);
   await app.init();
   return { app, http: () => request(app.getHttpServer()), mail, env, close: () => app.close() };
@@ -52,7 +52,7 @@ export async function resetDb(): Promise<void> {
   const pg = new Client({ connectionString: process.env.TEST_DATABASE_OWNER_URL });
   await pg.connect();
   try {
-    await pg.query('TRUNCATE audit_logs, invitations, memberships, roles, store_domains, stores, email_tokens, sessions, users CASCADE');
+    await pg.query('TRUNCATE webhook_events, payments, order_events, order_items, orders, audit_logs, invitations, memberships, roles, store_domains, stores, email_tokens, sessions, users CASCADE');
   } finally {
     await pg.end();
   }

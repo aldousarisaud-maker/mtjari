@@ -158,6 +158,11 @@ model Store {
   products    Product[]
   themes      StoreTheme[]
   carts       Cart[]
+  deliveryZones    DeliveryZone[]
+  checkoutSettings CheckoutSettings?
+  paymentMethods   PaymentMethod[]
+  orders           Order[]
+  webhookEvents    WebhookEvent[]
 
   @@map("stores")
 }
@@ -536,4 +541,227 @@ model CartItem {
   @@unique([cartId, variantId])
   @@index([storeId, variantId])
   @@map("cart_items")
+}
+
+// ---------------------------------------------------------------------
+// Phase 4: delivery, checkout, orders and payments. All tenant-scoped (RLS).
+// An order is a snapshot: names, prices and the address are copied at
+// purchase time and never change when the catalogue changes later.
+// ---------------------------------------------------------------------
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderPaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum FulfillmentType {
+  DELIVERY
+  PICKUP
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+/// A named delivery area with its fee (e.g. a Kuwait governorate).
+model DeliveryZone {
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String   @map("store_id") @db.Uuid
+  nameAr    String   @map("name_ar")
+  nameEn    String   @map("name_en")
+  fee       Int
+  /// Orders with a subtotal at or above this amount ship free; null = never free.
+  freeAbove Int?     @map("free_above")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, id])
+  @@index([storeId, sortOrder])
+  @@map("delivery_zones")
+}
+
+/// One row per store: checkout options and the order number counter.
+model CheckoutSettings {
+  storeId              String   @id @map("store_id") @db.Uuid
+  pickupEnabled        Boolean  @default(false) @map("pickup_enabled")
+  pickupInstructionsAr String?  @map("pickup_instructions_ar")
+  pickupInstructionsEn String?  @map("pickup_instructions_en")
+  /// Smallest cart subtotal that can be ordered; 0 = no minimum.
+  minOrderAmount       Int      @default(0) @map("min_order_amount")
+  nextOrderNumber      Int      @default(1001) @map("next_order_number")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("checkout_settings")
+}
+
+/// A payment provider switched on by the merchant. Credentials are stored
+/// only as an AES-256-GCM envelope bound to the store and provider.
+model PaymentMethod {
+  id             String   @id @default(uuid()) @db.Uuid
+  storeId        String   @map("store_id") @db.Uuid
+  provider       String
+  enabled        Boolean  @default(false)
+  credentialsEnc String?  @map("credentials_enc")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, provider])
+  @@map("payment_methods")
+}
+
+model Order {
+  id              String             @id @default(uuid()) @db.Uuid
+  storeId         String             @map("store_id") @db.Uuid
+  number          Int
+  status          OrderStatus        @default(PENDING)
+  paymentStatus   OrderPaymentStatus @default(UNPAID) @map("payment_status")
+  paymentProvider String             @map("payment_provider")
+  fulfillment     FulfillmentType
+  currency        String             @db.Char(3)
+  subtotal        Int
+  deliveryFee     Int                @map("delivery_fee")
+  total           Int
+  customerName    String             @map("customer_name")
+  customerPhone   String             @map("customer_phone")
+  customerEmail   String?            @map("customer_email")
+  /// Snapshot of the delivery address and zone names; null for pickup.
+  address         Json?
+  deliveryZoneId  String?            @map("delivery_zone_id") @db.Uuid
+  customerNote    String?            @map("customer_note")
+  locale          String             @default("ar")
+  /// SHA-256 of the secret link token the shopper uses to view the order.
+  accessTokenHash String             @unique @map("access_token_hash")
+  /// Client-generated key: a repeated submit returns the same order.
+  idempotencyKey  String             @map("idempotency_key")
+  placedAt        DateTime           @default(now()) @map("placed_at")
+  paidAt          DateTime?          @map("paid_at")
+  cancelledAt     DateTime?          @map("cancelled_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  store    Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items    OrderItem[]
+  events   OrderEvent[]
+  payments Payment[]
+
+  @@unique([storeId, number])
+  @@unique([storeId, id])
+  @@unique([storeId, idempotencyKey])
+  @@index([storeId, placedAt(sort: Desc)])
+  @@index([storeId, status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String  @id @default(uuid()) @db.Uuid
+  storeId      String  @map("store_id") @db.Uuid
+  orderId      String  @map("order_id") @db.Uuid
+  /// Kept for stock returns and links; not foreign keys, so the order survives product deletion.
+  productId    String  @map("product_id") @db.Uuid
+  variantId    String  @map("variant_id") @db.Uuid
+  nameAr       String? @map("name_ar")
+  nameEn       String? @map("name_en")
+  sku          String?
+  optionValues Json    @default("{}") @map("option_values")
+  unitPrice    Int     @map("unit_price")
+  quantity     Int
+  lineTotal    Int     @map("line_total")
+  /// Whether stock was taken for this line (and must be returned on cancel).
+  stockTaken   Boolean @default(false) @map("stock_taken")
+
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+/// Append-only order timeline. The runtime role has INSERT + SELECT only.
+model OrderEvent {
+  id          String       @id @default(uuid()) @db.Uuid
+  storeId     String       @map("store_id") @db.Uuid
+  orderId     String       @map("order_id") @db.Uuid
+  type        String
+  fromStatus  OrderStatus? @map("from_status")
+  toStatus    OrderStatus? @map("to_status")
+  note        String?
+  actorUserId String?      @map("actor_user_id") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_events")
+}
+
+/// One payment attempt for an order. Only a verified provider result (or, for
+/// cash on delivery, a staff member recording the cash) may set PAID.
+model Payment {
+  id          String        @id @default(uuid()) @db.Uuid
+  storeId     String        @map("store_id") @db.Uuid
+  orderId     String        @map("order_id") @db.Uuid
+  provider    String
+  status      PaymentStatus @default(PENDING)
+  amount      Int
+  currency    String        @db.Char(3)
+  /// The provider's own id for this payment (charge id, invoice id...).
+  providerRef String?       @map("provider_ref")
+  paidAt      DateTime?     @map("paid_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
+
+  @@unique([storeId, id])
+  @@unique([storeId, provider, providerRef])
+  @@index([orderId])
+  @@map("payments")
+}
+
+/// Every provider notification is recorded once; the unique key makes
+/// redelivered webhooks harmless.
+model WebhookEvent {
+  id          String             @id @default(uuid()) @db.Uuid
+  storeId     String             @map("store_id") @db.Uuid
+  provider    String
+  eventId     String             @map("event_id")
+  type        String
+  status      WebhookEventStatus @default(RECEIVED)
+  payloadHash String             @map("payload_hash")
+  error       String?
+  receivedAt  DateTime           @default(now()) @map("received_at")
+  processedAt DateTime?          @map("processed_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, provider, eventId])
+  @@map("webhook_events")
 }

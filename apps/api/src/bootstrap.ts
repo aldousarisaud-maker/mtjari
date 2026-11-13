@@ -7,7 +7,7 @@ import { buildAppModule } from './app.module';
 import type { Env } from './config/env';
 
 export async function createApp(env: Env): Promise<NestExpressApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(buildAppModule(env), { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(buildAppModule(env), { bufferLogs: true, rawBody: true });
   app.useLogger(app.get(Logger));
   configureApp(app, env);
   app.enableShutdownHooks();

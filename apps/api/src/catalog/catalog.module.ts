@@ -16,5 +16,6 @@ import { TaxonomyService } from './taxonomy.service';
     { provide: STORAGE, inject: [ENV], useFactory: (env: Env) => createStorage(env) },
     TaxonomyService, ProductsService, InventoryService, MediaService, CsvService,
   ],
+  exports: [InventoryService],
 })
 export class CatalogModule {}

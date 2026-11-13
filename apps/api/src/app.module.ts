@@ -16,6 +16,7 @@ import { MembersModule } from './members/members.module';
 import { RolesModule } from './roles/roles.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { StorefrontModule } from './storefront/storefront.module';
+import { OrdersModule } from './orders/orders.module';
 import { HealthController } from './health/health.controller';
 
 @Global()
@@ -66,6 +67,7 @@ export function buildAppModule(env: Env): DynamicModule {
       RolesModule,
       CatalogModule,
       StorefrontModule,
+      OrdersModule,
     ],
     controllers: [HealthController],
     providers: [

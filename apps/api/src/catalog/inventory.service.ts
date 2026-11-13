@@ -46,7 +46,7 @@ export class InventoryService {
    * another; the balance and its ledger entry are written together.
    */
   async applyInTx(
-    tx: TxClient, t: TenantContext, variantId: string,
+    tx: TxClient, t: { storeId: string; userId: string | null }, variantId: string,
     change: { delta?: number; setTo?: number }, reason: InventoryReason, note: string | null,
   ): Promise<{ quantity: number; delta: number } | null> {
     const rows = await tx.$queryRaw<{ stock_quantity: number; track_inventory: boolean }[]>`

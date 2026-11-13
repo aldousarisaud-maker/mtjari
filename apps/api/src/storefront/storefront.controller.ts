@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
-  PERMISSIONS, cartAddSchema, cartUpdateSchema, storefrontProductsQuerySchema, themeDraftSchema, themePublishSchema,
+  PERMISSIONS, cartAddSchema, cartUpdateSchema, checkoutSchema, type CheckoutInput, storefrontProductsQuerySchema, themeDraftSchema, themePublishSchema,
   type StorefrontProductsQuery, type ThemeDraftInput, type ThemeId,
 } from '@mtjari/shared';
 import { Public } from '../auth/decorators';
@@ -9,6 +9,7 @@ import { Meta, type RequestMeta } from '../common/request-meta';
 import { ZodPipe } from '../common/zod.pipe';
 import { RequirePermission, StoreAccessGuard, Tenant, type TenantContext } from '../tenancy/tenancy';
 import { CartService } from './cart.service';
+import { CheckoutService } from './checkout.service';
 import { Shop, StorefrontGuard, type ShopContext } from './storefront.guard';
 import { StorefrontService } from './storefront.service';
 import { ThemeService } from './theme.service';
@@ -26,7 +27,7 @@ const uuid = new ParseUUIDPipe({ version: '4' });
 @Throttle({ default: { limit: () => Number(process.env.STOREFRONT_THROTTLE_LIMIT) || 600, ttl: 60_000 } })
 @Controller('v1/storefront')
 export class StorefrontController {
-  constructor(private readonly shop: StorefrontService, private readonly cart: CartService) {}
+  constructor(private readonly shop: StorefrontService, private readonly cart: CartService, private readonly checkout: CheckoutService) {}
 
   @Get('store')
   store(@Shop() s: ShopContext) { return this.shop.store(s); }
@@ -41,7 +42,20 @@ export class StorefrontController {
   sitemap(@Shop() s: ShopContext) { return this.shop.sitemap(s); }
 
   @Get('cart')
-  getCart(@Shop() s: ShopContext, @Headers('x-cart-token') token?: string) { return this.cart.get(s, token); }
+  getCart(@Shop() s: ShopContext, @Headers('x-cart-token') token?: string) { return this.checkout.cart(s, token); }
+
+  @Get('checkout')
+  checkoutView(@Shop() s: ShopContext, @Headers('x-cart-token') token?: string) { return this.checkout.view(s, token); }
+
+  // Placing orders is limited more tightly than browsing.
+  @Throttle({ default: { limit: () => Number(process.env.CHECKOUT_THROTTLE_LIMIT) || 20, ttl: 60_000 } })
+  @Post('checkout')
+  placeOrder(@Shop() s: ShopContext, @Body(new ZodPipe(checkoutSchema)) body: CheckoutInput, @Meta() meta: RequestMeta, @Headers('x-cart-token') token?: string) {
+    return this.checkout.place(s, token, body, meta);
+  }
+
+  @Get('orders/:token')
+  order(@Shop() s: ShopContext, @Param('token') token: string) { return this.checkout.orderByToken(s, token); }
 
   @Post('cart/items') @HttpCode(200)
   add(@Shop() s: ShopContext, @Body(new ZodPipe(cartAddSchema)) body: { variantId: string; quantity: number }, @Headers('x-cart-token') token?: string) {

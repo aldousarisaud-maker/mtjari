@@ -68,9 +68,13 @@ export class CartService {
       items,
       itemCount: ok.reduce((n, i) => n + i.quantity, 0),
       subtotal: ok.reduce((n, i) => n + i.lineTotal, 0),
-      // Checkout arrives in Phase 4; the storefront must not pretend otherwise.
-      checkoutAvailable: false,
     };
+  }
+
+  /** The cart inside an existing transaction, with its id (null when there is none). Used by checkout. */
+  async load(tx: TxClient, shop: ShopContext, token: string | undefined) {
+    const id = (await this.find(tx, shop, token))?.id ?? null;
+    return { id, ...(await this.present(tx, shop, id)) };
   }
 
   get(shop: ShopContext, token: string | undefined) {

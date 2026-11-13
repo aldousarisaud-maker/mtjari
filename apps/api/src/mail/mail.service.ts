@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createTransport, type Transporter } from 'nodemailer';
+import { formatMoney } from '@mtjari/shared';
 import { ENV, type Env } from '../config/env';
 
 export interface OutgoingMail {
@@ -34,6 +35,12 @@ export class LogTransport implements MailTransport {
 }
 
 type Locale = 'ar' | 'en';
+
+export interface OrderMailSummary {
+  storeName: string; number: number; currency: string; customerName: string;
+  items: { nameAr: string | null; nameEn: string | null; quantity: number; lineTotal: number }[];
+  subtotal: number; deliveryFee: number; total: number; paymentName: { ar: string; en: string };
+}
 
 function layout(locale: Locale, title: string, body: string, cta?: { href: string; label: string }): string {
   const dir = locale === 'ar' ? 'rtl' : 'ltr';
@@ -89,5 +96,37 @@ export class MailService {
       ? { s: `دعوة للانضمام إلى ${storeName}`, b: `تمت دعوتك للانضمام إلى فريق متجر <b>${esc(storeName)}</b> على متجري. الدعوة صالحة لمدة 7 أيام.`, c: 'قبول الدعوة' }
       : { s: `Invitation to join ${storeName}`, b: `You have been invited to join the <b>${esc(storeName)}</b> team on Mtjari. The invitation is valid for 7 days.`, c: 'Accept invitation' };
     return this.send({ to, subject: t.s, text: `${t.b.replace(/<[^>]+>/g, '')}\n${href}`, html: layout(locale, t.s, t.b, { href, label: t.c }) });
+  }
+
+  private orderLines(locale: Locale, o: OrderMailSummary): { text: string; html: string } {
+    const money = (n: number) => formatMoney(n, o.currency, locale);
+    const name = (i: OrderMailSummary['items'][number]) => (locale === 'ar' ? i.nameAr ?? i.nameEn : i.nameEn ?? i.nameAr) ?? '';
+    const L = locale === 'ar'
+      ? { sub: 'المجموع الفرعي', del: 'التوصيل', total: 'الإجمالي', pay: 'طريقة الدفع' }
+      : { sub: 'Subtotal', del: 'Delivery', total: 'Total', pay: 'Payment' };
+    const rows: [string, string][] = [
+      ...o.items.map((i): [string, string] => [`${name(i)} × ${i.quantity}`, money(i.lineTotal)]),
+      [L.sub, money(o.subtotal)], [L.del, money(o.deliveryFee)], [L.total, money(o.total)], [L.pay, o.paymentName[locale]],
+    ];
+    return {
+      text: rows.map(([a, b]) => `${a}: ${b}`).join('\n'),
+      html: `<table style="width:100%;border-collapse:collapse;margin-top:12px">${rows.map(([a, b]) => `<tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0">${esc(a)}</td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;text-align:end;white-space:nowrap">${esc(b)}</td></tr>`).join('')}</table>`,
+    };
+  }
+
+  sendOrderConfirmation(to: string, locale: Locale, o: OrderMailSummary, orderUrl: string) {
+    const lines = this.orderLines(locale, o);
+    const t = locale === 'ar'
+      ? { s: `تم استلام طلبك رقم ${o.number} من ${o.storeName}`, h: `شكراً ${esc(o.customerName)}`, b: `استلمنا طلبك رقم <b>${o.number}</b> من ${esc(o.storeName)}.`, c: 'عرض الطلب' }
+      : { s: `Order ${o.number} received by ${o.storeName}`, h: `Thank you, ${esc(o.customerName)}`, b: `We received your order <b>${o.number}</b> from ${esc(o.storeName)}.`, c: 'View order' };
+    return this.send({ to, subject: t.s, text: `${t.b.replace(/<[^>]+>/g, '')}\n${lines.text}\n${orderUrl}`, html: layout(locale, t.h, t.b + lines.html, { href: orderUrl, label: t.c }) });
+  }
+
+  sendNewOrderNotice(to: string, locale: Locale, o: OrderMailSummary, dashboardUrl: string) {
+    const lines = this.orderLines(locale, o);
+    const t = locale === 'ar'
+      ? { s: `طلب جديد رقم ${o.number} في ${o.storeName}`, b: `طلب جديد رقم <b>${o.number}</b> من ${esc(o.customerName)}.`, c: 'فتح الطلب' }
+      : { s: `New order ${o.number} at ${o.storeName}`, b: `New order <b>${o.number}</b> from ${esc(o.customerName)}.`, c: 'Open order' };
+    return this.send({ to, subject: t.s, text: `${t.b.replace(/<[^>]+>/g, '')}\n${lines.text}\n${dashboardUrl}`, html: layout(locale, t.s, t.b + lines.html, { href: dashboardUrl, label: t.c }) });
   }
 }

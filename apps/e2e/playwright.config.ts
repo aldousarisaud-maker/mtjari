@@ -46,6 +46,7 @@ export default defineConfig({
         THROTTLE_LIMIT: '10000',
         AUTH_THROTTLE_LIMIT: '10000',
         STOREFRONT_THROTTLE_LIMIT: '100000',
+        CHECKOUT_THROTTLE_LIMIT: '100000',
         // Uploaded images go to a throw-away folder and are served by the API.
         STORAGE_DRIVER: 'local',
         STORAGE_LOCAL_DIR: mkdtempSync(join(tmpdir(), 'mtjari-e2e-media-')),

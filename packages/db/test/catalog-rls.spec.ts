@@ -45,7 +45,7 @@ describe('schema-wide guard', () => {
         JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
         JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'store_id' AND NOT a.attisdropped
         WHERE c.relkind = 'r' ORDER BY 1`);
-      expect(rows.length).toBeGreaterThanOrEqual(13);
+      expect(rows.length).toBeGreaterThanOrEqual(24);
       const unprotected = rows.filter((r) => !r.rls || r.policies === 0).map((r) => r.table);
       expect(unprotected).toEqual([]);
     } finally {

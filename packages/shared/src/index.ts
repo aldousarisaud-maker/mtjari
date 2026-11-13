@@ -5,3 +5,4 @@ export * from './money';
 export * from './csv';
 export * from './catalog';
 export * from './themes';
+export * from './checkout';

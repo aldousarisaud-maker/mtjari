@@ -49,7 +49,20 @@ export const envSchema = z.object({
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).default(15),
   MAX_STORES_PER_USER: z.coerce.number().int().min(1).default(5),
   LOG_PRETTY: bool.default(false),
+  // Media storage: "local" writes to disk and the API serves /media; "s3" uses any S3-compatible bucket.
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  STORAGE_LOCAL_DIR: z.string().default('./var/media'),
+  STORAGE_PUBLIC_URL: z.string().url().default('http://localhost:4000/media'),
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_REGION: z.string().default('auto'),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_FORCE_PATH_STYLE: bool.default(false),
 }).superRefine((env, ctx) => {
+  if (env.STORAGE_DRIVER === 's3' && !(env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY)) {
+    ctx.addIssue({ code: 'custom', path: ['S3_BUCKET'], message: 'S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required when STORAGE_DRIVER=s3' });
+  }
   if (env.NODE_ENV === 'production') {
     if (env.MAIL_TRANSPORT !== 'smtp' || !env.SMTP_URL) {
       ctx.addIssue({ code: 'custom', path: ['SMTP_URL'], message: 'SMTP_URL is required in production' });

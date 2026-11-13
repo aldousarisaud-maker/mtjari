@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { TxClient } from '@mtjari/db';
-import { isPermission } from '@mtjari/shared';
+import { isPermission, resolveRolePermissions } from '@mtjari/shared';
 import { PrismaService } from '../common/prisma.service';
 import type { RequestMeta } from '../common/request-meta';
 import { AuditService } from '../audit/audit.service';
@@ -26,7 +26,7 @@ export class RolesService {
   list(t: TenantContext) {
     return this.tx(t, async (tx) => {
       const roles = await tx.role.findMany({ where: { storeId: t.storeId }, include: { _count: { select: { memberships: true } } }, orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }] });
-      return roles.map(({ _count, ...r }) => ({ ...r, memberCount: _count.memberships }));
+      return roles.map(({ _count, ...r }) => ({ ...r, permissions: resolveRolePermissions(r), memberCount: _count.memberships }));
     });
   }
 

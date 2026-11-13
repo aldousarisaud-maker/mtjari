@@ -14,6 +14,7 @@ import { AppThrottlerGuard } from './auth/throttler.guard';
 import { StoresModule } from './stores/stores.module';
 import { MembersModule } from './members/members.module';
 import { RolesModule } from './roles/roles.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { HealthController } from './health/health.controller';
 
 @Global()
@@ -62,6 +63,7 @@ export function buildAppModule(env: Env): DynamicModule {
       StoresModule,
       MembersModule,
       RolesModule,
+      CatalogModule,
     ],
     controllers: [HealthController],
     providers: [

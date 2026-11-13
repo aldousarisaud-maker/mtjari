@@ -12,6 +12,7 @@
     "test:e2e": "jest --runInBand --testPathPatterns=test/"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1168.0",
     "@mtjari/db": "workspace:*",
     "@mtjari/shared": "workspace:*",
     "@nestjs/common": "11.2.10",
@@ -29,6 +30,7 @@
     "pino-http": "11.0.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "sharp": "0.35.5",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -37,6 +39,7 @@
     "@swc/jest": "0.2.39",
     "@types/express": "5.0.6",
     "@types/jest": "30.0.0",
+    "@types/multer": "2.3.0",
     "@types/node": "22.19.1",
     "@types/nodemailer": "7.0.12",
     "@types/pg": "8.15.6",

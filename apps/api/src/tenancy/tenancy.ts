@@ -2,7 +2,7 @@ import {
   CanActivate, ExecutionContext, ForbiddenException, Injectable, NotFoundException, SetMetadata, createParamDecorator,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ALL_PERMISSIONS, OWNER_ROLE_KEY, isPermission, type Permission } from '@mtjari/shared';
+import { OWNER_ROLE_KEY, resolveRolePermissions, type Permission } from '@mtjari/shared';
 import { PrismaService } from '../common/prisma.service';
 import type { AuthedRequest } from '../auth/decorators';
 
@@ -30,9 +30,8 @@ export const Tenant = createParamDecorator((_: unknown, ctx: ExecutionContext): 
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function effectivePermissions(role: { key: string | null; permissions: string[] }): Set<Permission> {
-  if (role.key === OWNER_ROLE_KEY) return new Set(ALL_PERMISSIONS);
-  return new Set(role.permissions.filter(isPermission));
+export function effectivePermissions(role: { key: string | null; isSystem?: boolean; permissions: string[] }): Set<Permission> {
+  return new Set(resolveRolePermissions(role));
 }
 
 /**

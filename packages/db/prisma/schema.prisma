@@ -150,6 +150,9 @@ model Store {
   memberships Membership[]
   invitations Invitation[]
   auditLogs   AuditLog[]
+  categories  Category[]
+  brands      Brand[]
+  products    Product[]
 
   @@map("stores")
 }
@@ -251,4 +254,226 @@ model AuditLog {
   @@index([storeId, createdAt(sort: Desc)])
   @@index([actorUserId, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------
+// Phase 2: catalogue and inventory. All tables are tenant-scoped (RLS).
+// Child tables reference their parent with a composite (store_id, id)
+// foreign key, so a row can never point at another store's row even
+// though foreign-key checks themselves bypass RLS.
+// Money is stored as integer minor units (fils/halalas) of the store currency.
+// ---------------------------------------------------------------------
+
+enum ProductType {
+  SIMPLE
+  VARIANT
+  DIGITAL
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProductRelationType {
+  RELATED
+  UPSELL
+  CROSS_SELL
+}
+
+enum InventoryReason {
+  INITIAL
+  RESTOCK
+  ADJUSTMENT
+  DAMAGE
+  RETURN
+  SALE
+  CORRECTION
+  IMPORT
+}
+
+model Category {
+  id             String   @id @default(uuid()) @db.Uuid
+  storeId        String   @map("store_id") @db.Uuid
+  /// Validated in the service to belong to the same store (nullable, so not composite).
+  parentId       String?  @map("parent_id") @db.Uuid
+  nameAr         String?  @map("name_ar")
+  nameEn         String?  @map("name_en")
+  slug           String
+  descriptionAr  String?  @map("description_ar")
+  descriptionEn  String?  @map("description_en")
+  sortOrder      Int      @default(0) @map("sort_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  seoTitle       String?  @map("seo_title")
+  seoDescription String?  @map("seo_description")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  store    Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  parent   Category?         @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[]        @relation("CategoryTree")
+  products ProductCategory[]
+
+  @@unique([storeId, slug])
+  @@unique([storeId, id])
+  @@index([storeId, parentId])
+  @@map("categories")
+}
+
+model Brand {
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String   @map("store_id") @db.Uuid
+  name      String
+  slug      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([storeId, slug])
+  @@map("brands")
+}
+
+model Product {
+  id             String        @id @default(uuid()) @db.Uuid
+  storeId        String        @map("store_id") @db.Uuid
+  type           ProductType   @default(SIMPLE)
+  status         ProductStatus @default(DRAFT)
+  nameAr         String?       @map("name_ar")
+  nameEn         String?       @map("name_en")
+  slug           String
+  descriptionAr  String?       @map("description_ar")
+  descriptionEn  String?       @map("description_en")
+  /// Validated in the service to belong to the same store.
+  brandId        String?       @map("brand_id") @db.Uuid
+  tags           String[]      @default([])
+  seoTitle       String?       @map("seo_title")
+  seoDescription String?       @map("seo_description")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  brand      Brand?            @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  options    ProductOption[]
+  variants   ProductVariant[]
+  media      ProductMedia[]
+  categories ProductCategory[]
+  relations  ProductRelation[] @relation("RelationSource")
+  relatedBy  ProductRelation[] @relation("RelationTarget")
+
+  @@unique([storeId, slug])
+  @@unique([storeId, id])
+  @@index([storeId, status, createdAt(sort: Desc)])
+  @@map("products")
+}
+
+model ProductOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String   @map("store_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  name      String
+  values    String[]
+  position  Int      @default(0)
+
+  product Product @relation(fields: [storeId, productId], references: [storeId, id], onDelete: Cascade)
+
+  @@unique([productId, name])
+  @@map("product_options")
+}
+
+model ProductVariant {
+  id                String   @id @default(uuid()) @db.Uuid
+  storeId           String   @map("store_id") @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  sku               String?
+  barcode           String?
+  /// e.g. {"Color":"Red","Size":"M"}; {} for the single variant of a simple product.
+  optionValues      Json     @default("{}") @map("option_values")
+  price             Int
+  compareAtPrice    Int?     @map("compare_at_price")
+  cost              Int?
+  trackInventory    Boolean  @default(true) @map("track_inventory")
+  /// Cached balance; the source of truth is the inventory_movements ledger.
+  stockQuantity     Int      @default(0) @map("stock_quantity")
+  lowStockThreshold Int?     @map("low_stock_threshold")
+  position          Int      @default(0)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  product   Product             @relation(fields: [storeId, productId], references: [storeId, id], onDelete: Cascade)
+  movements InventoryMovement[]
+
+  @@unique([storeId, sku])
+  @@unique([storeId, id])
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model ProductMedia {
+  id         String   @id @default(uuid()) @db.Uuid
+  storeId    String   @map("store_id") @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  /// Storage key prefix; rendered sizes live at `${keyBase}-${width}.webp`.
+  keyBase    String   @map("key_base")
+  widths     Int[]
+  width      Int
+  height     Int
+  altAr      String?  @map("alt_ar")
+  altEn      String?  @map("alt_en")
+  position   Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [storeId, productId], references: [storeId, id], onDelete: Cascade)
+
+  @@index([productId, position])
+  @@map("product_media")
+}
+
+model ProductCategory {
+  storeId    String @map("store_id") @db.Uuid
+  productId  String @map("product_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+
+  product  Product  @relation(fields: [storeId, productId], references: [storeId, id], onDelete: Cascade)
+  category Category @relation(fields: [storeId, categoryId], references: [storeId, id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+  @@map("product_categories")
+}
+
+model ProductRelation {
+  storeId          String              @map("store_id") @db.Uuid
+  productId        String              @map("product_id") @db.Uuid
+  relatedProductId String              @map("related_product_id") @db.Uuid
+  type             ProductRelationType
+  position         Int                 @default(0)
+
+  product Product @relation("RelationSource", fields: [storeId, productId], references: [storeId, id], onDelete: Cascade)
+  related Product @relation("RelationTarget", fields: [storeId, relatedProductId], references: [storeId, id], onDelete: Cascade)
+
+  @@id([productId, relatedProductId, type])
+  @@map("product_relations")
+}
+
+/// Append-only stock ledger. The runtime role has INSERT + SELECT only.
+model InventoryMovement {
+  id            String          @id @default(uuid()) @db.Uuid
+  storeId       String          @map("store_id") @db.Uuid
+  variantId     String          @map("variant_id") @db.Uuid
+  delta         Int
+  quantityAfter Int             @map("quantity_after")
+  reason        InventoryReason
+  note          String?
+  actorUserId   String?         @map("actor_user_id") @db.Uuid
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  variant ProductVariant @relation(fields: [storeId, variantId], references: [storeId, id], onDelete: Cascade)
+
+  @@index([storeId, createdAt(sort: Desc)])
+  @@index([variantId, createdAt(sort: Desc)])
+  @@map("inventory_movements")
 }

@@ -23,9 +23,13 @@ export const PERMISSIONS = {
   DOMAINS_READ: 'domains:read',
   DOMAINS_MANAGE: 'domains:manage',
 
-  // Reserved for Phase 2+ (declared now so roles are stable).
+  // Catalogue (products, categories, brands, media, import/export).
   PRODUCTS_READ: 'products:read',
   PRODUCTS_WRITE: 'products:write',
+  INVENTORY_READ: 'inventory:read',
+  INVENTORY_WRITE: 'inventory:write',
+
+  // Reserved for later phases (declared now so roles are stable).
   ORDERS_READ: 'orders:read',
   ORDERS_WRITE: 'orders:write',
   CUSTOMERS_READ: 'customers:read',
@@ -82,6 +86,8 @@ export const SYSTEM_ROLES = {
       P.DOMAINS_READ,
       P.PRODUCTS_READ,
       P.PRODUCTS_WRITE,
+      P.INVENTORY_READ,
+      P.INVENTORY_WRITE,
       P.ORDERS_READ,
       P.ORDERS_WRITE,
       P.CUSTOMERS_READ,
@@ -99,6 +105,8 @@ export const SYSTEM_ROLES = {
       P.STORE_READ,
       P.PRODUCTS_READ,
       P.PRODUCTS_WRITE,
+      P.INVENTORY_READ,
+      P.INVENTORY_WRITE,
       P.ORDERS_READ,
       P.ORDERS_WRITE,
       P.CUSTOMERS_READ,
@@ -108,7 +116,7 @@ export const SYSTEM_ROLES = {
     key: 'viewer',
     name: 'Viewer',
     nameAr: 'مشاهد',
-    permissions: [P.STORE_READ, P.PRODUCTS_READ, P.ORDERS_READ, P.REPORTS_READ],
+    permissions: [P.STORE_READ, P.PRODUCTS_READ, P.INVENTORY_READ, P.ORDERS_READ, P.REPORTS_READ],
   },
 } as const satisfies Record<
   string,
@@ -117,3 +125,17 @@ export const SYSTEM_ROLES = {
 
 export type SystemRoleKey = (typeof SYSTEM_ROLES)[keyof typeof SYSTEM_ROLES]['key'];
 export const OWNER_ROLE_KEY = SYSTEM_ROLES.OWNER.key;
+
+const TEMPLATE_BY_KEY = new Map<string, readonly Permission[]>(Object.values(SYSTEM_ROLES).map((r) => [r.key, r.permissions]));
+
+/**
+ * The permissions a role actually grants. Built-in roles always follow the
+ * current template in code, so permissions introduced by later releases reach
+ * existing stores without a data migration. Custom roles use their stored
+ * list (unknown strings are ignored).
+ */
+export function resolveRolePermissions(role: { key: string | null; isSystem?: boolean; permissions: readonly string[] }): Permission[] {
+  const template = role.key ? TEMPLATE_BY_KEY.get(role.key) : undefined;
+  if (template && role.isSystem !== false) return [...template];
+  return role.permissions.filter(isPermission);
+}

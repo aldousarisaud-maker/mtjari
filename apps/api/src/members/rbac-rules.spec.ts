@@ -4,10 +4,10 @@ const actor = (perms: string[], isOwner = false) => ({ isOwner, permissions: new
 
 describe('canGrantRole', () => {
   it('owners can grant anything, including owner', () => {
-    expect(canGrantRole(actor([], true), { key: 'owner', permissions: [] })).toBe(true);
+    expect(canGrantRole(actor([], true), { key: 'owner', isSystem: true, permissions: [] })).toBe(true);
   });
   it('non-owners can never grant owner', () => {
-    expect(canGrantRole(actor(['store:read', 'members:invite']), { key: 'owner', permissions: [] })).toBe(false);
+    expect(canGrantRole(actor(['store:read', 'members:invite']), { key: 'owner', isSystem: true, permissions: [] })).toBe(false);
   });
   it('non-owners can grant only subsets of their own permissions', () => {
     const a = actor(['store:read', 'products:read', 'members:invite']);

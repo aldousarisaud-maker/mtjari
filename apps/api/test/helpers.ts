@@ -6,7 +6,8 @@ import { authenticator } from 'otplib';
 import { buildAppModule } from '../src/app.module';
 import { loadEnv, type Env } from '../src/config/env';
 import { MAIL_TRANSPORT, type MailTransport, type OutgoingMail } from '../src/mail/mail.service';
-import helmet from 'helmet';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureApp } from '../src/bootstrap';
 
 /** Captures outgoing mail so tests can follow real links (no shortcuts into the DB). */
 export class CapturingTransport implements MailTransport {
@@ -41,8 +42,8 @@ export async function createTestApp(overrides: Partial<Record<string, string>> =
     .overrideProvider(MAIL_TRANSPORT)
     .useValue(mail)
     .compile();
-  const app = moduleRef.createNestApplication({ logger: process.env.TEST_LOGS ? ['error'] : false });
-  app.use(helmet());
+  const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: process.env.TEST_LOGS ? ['error'] : false });
+  configureApp(app, env);
   await app.init();
   return { app, http: () => request(app.getHttpServer()), mail, env, close: () => app.close() };
 }

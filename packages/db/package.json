@@ -1,0 +1,41 @@
+{
+  "name": "@mtjari/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "seed": "tsx src/seed.ts",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@mtjari/shared": "workspace:*",
+    "@swc/core": "1.16.22",
+    "@swc/jest": "0.2.39",
+    "@types/jest": "30.0.0",
+    "@types/node": "22.19.1",
+    "@types/pg": "8.15.6",
+    "argon2": "0.45.2",
+    "dotenv": "17.2.3",
+    "jest": "30.5.2",
+    "prisma": "7.10.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": { "^.+\\.ts$": "@swc/jest" },
+    "testMatch": ["<rootDir>/test/**/*.spec.ts"],
+    "testTimeout": 30000
+  }
+}

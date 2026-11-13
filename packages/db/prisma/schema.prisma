@@ -1,0 +1,254 @@
+// Mtjari.cc — Phase 1 schema (identity, tenancy, RBAC, audit).
+// Tenant-scoped tables carry store_id and are protected by Postgres
+// Row-Level Security (see migrations/*_rls). Full roadmap schema lives in
+// docs/DATABASE_SCHEMA.md.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PlatformRole {
+  NONE
+  SUPPORT
+  SUPER_ADMIN
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum StoreStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum DomainType {
+  SUBDOMAIN
+  CUSTOM
+}
+
+enum DomainStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  ACTIVE
+  FAILED
+}
+
+enum SslStatus {
+  NONE
+  PENDING
+  ISSUED
+  FAILED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  PLATFORM_ADMIN
+}
+
+/// Global identity. Not tenant-scoped: one person can belong to many stores.
+model User {
+  id                String       @id @default(uuid()) @db.Uuid
+  email             String       @unique
+  name              String
+  passwordHash      String       @map("password_hash")
+  locale            String       @default("ar")
+  status            UserStatus   @default(ACTIVE)
+  platformRole      PlatformRole @default(NONE) @map("platform_role")
+  emailVerifiedAt   DateTime?    @map("email_verified_at")
+  /// AES-256-GCM encrypted TOTP secret (never stored in plaintext).
+  mfaSecretEnc      String?      @map("mfa_secret_enc")
+  mfaEnabledAt      DateTime?    @map("mfa_enabled_at")
+  /// SHA-256 hashes of one-time recovery codes.
+  mfaRecoveryHashes String[]     @default([]) @map("mfa_recovery_hashes")
+  failedLoginCount  Int          @default(0) @map("failed_login_count")
+  lockedUntil       DateTime?    @map("locked_until")
+  lastLoginAt       DateTime?    @map("last_login_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  sessions    Session[]
+  emailTokens EmailToken[]
+  memberships Membership[]
+
+  @@map("users")
+}
+
+/// Rotating refresh tokens. A reused (already rotated) token revokes its whole family.
+model Session {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  familyId     String    @map("family_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  ip           String?
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("sessions")
+}
+
+model EmailToken {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  type      EmailTokenType
+  tokenHash String         @unique @map("token_hash")
+  expiresAt DateTime       @map("expires_at")
+  usedAt    DateTime?      @map("used_at")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("email_tokens")
+}
+
+/// The tenant. Every merchant-owned row references a store.
+model Store {
+  id            String      @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String      @unique
+  businessType  String      @default("other") @map("business_type")
+  country       String      @default("KW") @db.Char(2)
+  currency      String      @default("KWD") @db.Char(3)
+  defaultLocale String      @default("ar") @map("default_locale")
+  status        StoreStatus @default(DRAFT)
+  createdById   String?     @map("created_by_id") @db.Uuid
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  deletedAt     DateTime?   @map("deleted_at")
+
+  domains     StoreDomain[]
+  roles       Role[]
+  memberships Membership[]
+  invitations Invitation[]
+  auditLogs   AuditLog[]
+
+  @@map("stores")
+}
+
+model StoreDomain {
+  id                String       @id @default(uuid()) @db.Uuid
+  storeId           String       @map("store_id") @db.Uuid
+  hostname          String       @unique
+  type              DomainType
+  status            DomainStatus @default(PENDING_VERIFICATION)
+  sslStatus         SslStatus    @default(NONE) @map("ssl_status")
+  isPrimary         Boolean      @default(false) @map("is_primary")
+  verificationToken String?      @map("verification_token")
+  verifiedAt        DateTime?    @map("verified_at")
+  lastCheckedAt     DateTime?    @map("last_checked_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("store_domains")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  storeId     String   @map("store_id") @db.Uuid
+  /// Set for built-in roles (owner, admin, ...); null for custom roles.
+  key         String?
+  name        String
+  permissions String[] @default([])
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store       Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  invitations Invitation[]
+
+  @@unique([storeId, name])
+  @@unique([storeId, key])
+  @@map("roles")
+}
+
+model Membership {
+  id        String           @id @default(uuid()) @db.Uuid
+  storeId   String           @map("store_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  roleId    String           @map("role_id") @db.Uuid
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role  Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([storeId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Invitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  storeId     String    @map("store_id") @db.Uuid
+  email       String
+  roleId      String    @map("role_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  invitedById String?   @map("invited_by_id") @db.Uuid
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  role  Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("invitations")
+}
+
+/// Append-only. The application DB role has INSERT + SELECT only.
+model AuditLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  storeId     String?   @map("store_id") @db.Uuid
+  actorUserId String?   @map("actor_user_id") @db.Uuid
+  actorType   ActorType @default(USER) @map("actor_type")
+  action      String
+  entityType  String?   @map("entity_type")
+  entityId    String?   @map("entity_id")
+  metadata    Json      @default("{}")
+  ip          String?
+  userAgent   String?   @map("user_agent")
+  requestId   String?   @map("request_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  store Store? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

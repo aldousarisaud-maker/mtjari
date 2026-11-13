@@ -1,0 +1,79 @@
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import {
+  PERMISSIONS, cartAddSchema, cartUpdateSchema, storefrontProductsQuerySchema, themeDraftSchema, themePublishSchema,
+  type StorefrontProductsQuery, type ThemeDraftInput, type ThemeId,
+} from '@mtjari/shared';
+import { Public } from '../auth/decorators';
+import { Meta, type RequestMeta } from '../common/request-meta';
+import { ZodPipe } from '../common/zod.pipe';
+import { RequirePermission, StoreAccessGuard, Tenant, type TenantContext } from '../tenancy/tenancy';
+import { CartService } from './cart.service';
+import { Shop, StorefrontGuard, type ShopContext } from './storefront.guard';
+import { StorefrontService } from './storefront.service';
+import { ThemeService } from './theme.service';
+
+const uuid = new ParseUUIDPipe({ version: '4' });
+
+/**
+ * Public shop API. No login: the shop is chosen by hostname and every query
+ * runs inside that store's RLS context. One page view makes several calls,
+ * so the per-IP limit is higher than for the dashboard API.
+ */
+@Public()
+@UseGuards(StorefrontGuard)
+@Throttle({ default: { limit: 600, ttl: 60_000 } })
+@Controller('v1/storefront')
+export class StorefrontController {
+  constructor(private readonly shop: StorefrontService, private readonly cart: CartService) {}
+
+  @Get('store')
+  store(@Shop() s: ShopContext) { return this.shop.store(s); }
+
+  @Get('products')
+  products(@Shop() s: ShopContext, @Query(new ZodPipe(storefrontProductsQuerySchema)) q: StorefrontProductsQuery) { return this.shop.products(s, q); }
+
+  @Get('products/:slug')
+  product(@Shop() s: ShopContext, @Param('slug') slug: string) { return this.shop.product(s, slug.slice(0, 120)); }
+
+  @Get('sitemap')
+  sitemap(@Shop() s: ShopContext) { return this.shop.sitemap(s); }
+
+  @Get('cart')
+  getCart(@Shop() s: ShopContext, @Headers('x-cart-token') token?: string) { return this.cart.get(s, token); }
+
+  @Post('cart/items') @HttpCode(200)
+  add(@Shop() s: ShopContext, @Body(new ZodPipe(cartAddSchema)) body: { variantId: string; quantity: number }, @Headers('x-cart-token') token?: string) {
+    return this.cart.add(s, token, body);
+  }
+
+  @Patch('cart/items/:id')
+  update(@Shop() s: ShopContext, @Param('id', uuid) id: string, @Body(new ZodPipe(cartUpdateSchema)) body: { quantity: number }, @Headers('x-cart-token') token?: string) {
+    return this.cart.setQuantity(s, token, id, body.quantity);
+  }
+}
+
+/** Merchant side: choose, customise, preview and publish a theme; open or close the storefront. */
+@Controller('v1/stores/:storeId')
+@UseGuards(StoreAccessGuard)
+export class ThemeController {
+  constructor(private readonly themes: ThemeService) {}
+
+  @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Get('theme')
+  overview(@Tenant() t: TenantContext) { return this.themes.overview(t); }
+
+  @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Post('theme/draft') @HttpCode(200)
+  draft(@Tenant() t: TenantContext, @Body(new ZodPipe(themeDraftSchema)) body: ThemeDraftInput, @Meta() meta: RequestMeta) { return this.themes.saveDraft(t, body, meta); }
+
+  @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Post('theme/publish') @HttpCode(200)
+  publish(@Tenant() t: TenantContext, @Body(new ZodPipe(themePublishSchema)) body: { themeId: ThemeId }, @Meta() meta: RequestMeta) { return this.themes.publish(t, body.themeId, meta); }
+
+  @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Post('theme/preview-token') @HttpCode(200)
+  preview(@Tenant() t: TenantContext, @Body(new ZodPipe(themePublishSchema)) body: { themeId: ThemeId }) { return this.themes.previewToken(t, body.themeId); }
+
+  @RequirePermission(PERMISSIONS.STORE_UPDATE) @Post('launch') @HttpCode(200)
+  launch(@Tenant() t: TenantContext, @Meta() meta: RequestMeta) { return this.themes.launch(t, meta); }
+
+  @RequirePermission(PERMISSIONS.STORE_UPDATE) @Post('unlaunch') @HttpCode(200)
+  unlaunch(@Tenant() t: TenantContext, @Meta() meta: RequestMeta) { return this.themes.unlaunch(t, meta); }
+}

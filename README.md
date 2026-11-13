@@ -2,7 +2,7 @@
 
 Multi-tenant e-commerce SaaS for Kuwait and the Gulf. Arabic-first (RTL) with English.
 
-**Status: Phases 1 to 4 of 10 complete, Phase 5 in progress** — accounts, stores (tenants) with strict database-level isolation, teams, roles, audit log, catalogue and inventory, storefront with five themes, guest checkout, orders, delivery zones, Cash on Delivery, and online payment through Tap Payments with each merchant's own secret key. Tap is tested against a local stand-in and only partly against Tap's real sandbox; see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for what exists, what was verified and what was left out.
+**Status: Phases 1 to 4 of 10 complete, Phase 5 in progress** — accounts, stores (tenants) with strict database-level isolation, teams, roles, audit log, catalogue and inventory, storefront with five themes, guest checkout, orders, delivery zones, Cash on Delivery, and online payment through Tap Payments and MyFatoorah with each merchant's own key. Both are tested against local stand-ins and only partly against the providers' real sandboxes; see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for what exists, what was verified and what was left out.
 
 ## Documents
 
@@ -36,8 +36,8 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#1-local-development-verified). In sh
 ## Tests
 
 ```bash
-pnpm test                       # 276 tests: validation, money, CSV, themes, checkout rules, RLS isolation, API unit + HTTP
-pnpm --filter @mtjari/e2e e2e   # 60 browser tests: dashboard, storefront, checkout and online payment journeys, all five themes (desktop and mobile)
+pnpm test                       # 290 tests: validation, money, CSV, themes, checkout rules, RLS isolation, API unit + HTTP
+pnpm --filter @mtjari/e2e e2e   # 63 browser tests: dashboard, storefront, checkout and online payment journeys, all five themes (desktop and mobile)
 ```
 
 All suites run against a real PostgreSQL database using the same restricted role as production; browser tests also use real SMTP delivery to a local sink.

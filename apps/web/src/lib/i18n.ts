@@ -397,6 +397,11 @@ const ar = {
   'o.e.duplicate_payment': 'وصل دفع مكرر لهذا الطلب. أعد المبلغ الزائد للعميل من لوحة تحكم مزود الدفع',
   'o.e.payment_retry': 'بدأ العميل محاولة دفع جديدة',
   'err.invalid_payment_credentials': 'المفتاح غير صحيح أو لم تقبله بوابة الدفع. تأكد أنك نسخت المفتاح السري كاملاً.',
+  'd.help.myfatoorah': 'من لوحة تحكم ماي فاتورة: Integration Settings ثم API Key، وانسخ المفتاح. اختر بلد الحساب الذي يتبعه المفتاح، ويجب أن تكون عملة الحساب هي عملة المتجر. نتحقق من المفتاح مع ماي فاتورة عند الحفظ، ولا يُعرض بعد حفظه.',
+  'd.modeHint.myfatoorah.test': 'الحساب المحدد حساب تجريبي: لا تُخصم مبالغ حقيقية من العملاء.',
+  'd.modeHint.myfatoorah.live': 'حساب حقيقي: المدفوعات حقيقية وتذهب إلى حسابك في ماي فاتورة.',
+  'd.choose': 'اختر',
+  'err.payment_currency_mismatch': 'عملة حساب بوابة الدفع الذي اخترته تختلف عن عملة المتجر. اختر البلد الصحيح للحساب.',
 } as const;
 
 export type Key = keyof typeof ar;
@@ -794,6 +799,11 @@ const en: Record<Key, string> = {
   'o.e.duplicate_payment': 'A duplicate payment arrived for this order. Refund the extra payment from the provider\'s dashboard',
   'o.e.payment_retry': 'The customer started a new payment attempt',
   'err.invalid_payment_credentials': 'The key is not valid or the payment gateway refused it. Make sure you copied the whole secret key.',
+  'd.help.myfatoorah': 'In your MyFatoorah portal: Integration Settings, then API Key, and copy the key. Choose the country of the account the key belongs to; the account currency must be the store currency. The key is checked with MyFatoorah when you save, and is never shown again.',
+  'd.modeHint.myfatoorah.test': 'The selected account is a demo account: shoppers are not charged real money.',
+  'd.modeHint.myfatoorah.live': 'A real account: payments are real and go to your MyFatoorah account.',
+  'd.choose': 'Choose',
+  'err.payment_currency_mismatch': 'The currency of the selected payment account is not the store currency. Choose the right account country.',
 };
 
 const dict: Record<Locale, Record<Key, string>> = { ar, en };

@@ -131,7 +131,7 @@ Mutation checks: removing the webhook amount check, the webhook signature check,
 - Address forms for countries other than Kuwait (phone rules exist for the six GCC countries; the address form is Kuwait-shaped).
 - Per-zone area lists, COD fee, COD limits per zone.
 
-## Phase 5 — Payment providers (in progress: Tap built, others not started)
+## Phase 5 — Payment providers (in progress: Tap and MyFatoorah built, others not started)
 
 **Tap Payments: built.** Each merchant pastes their own Tap secret key in Dashboard → Delivery and payment; nothing is shared between stores and the platform holds no Tap account.
 
@@ -147,9 +147,21 @@ How it was verified, honestly:
 
 Not built: refunds from the dashboard, automatic cancellation of unpaid online orders (they stay pending and hold stock until the merchant cancels), reconciliation job, Redis/queue, choosing single methods (KNET only, card only), saved cards, Apple Pay domain setup.
 
-**Next providers** (not started): MyFatoorah, Hesabe, Tabby, Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+**MyFatoorah: built.** Same principle: each merchant pastes their own API token (MyFatoorah portal → Integration Settings → API Key) and chooses the country of the account it belongs to, because MyFatoorah has a different API address per country.
 
-Tests after the Tap work: `packages/shared` 49, `packages/db` 41, `apps/api` 186, Playwright 60.
+- Accounts offered: demo (test), Kuwait, Bahrain, Oman, Saudi Arabia, UAE, Qatar. The account currency must be the store currency (a MyFatoorah invoice is always in the account's base currency); a mismatch is refused when saving. The token is checked with MyFatoorah before it is stored, encrypted, never shown again. Demo account shows **Test mode**, a country account **Live mode**.
+- Checkout creates an invoice (`POST /v2/SendPayment`, `NotificationOption = LNK`) for the server-computed total and sends the shopper to MyFatoorah's invoice page (the methods enabled on the merchant's account).
+- An order is paid only after the API reads the invoice back with the merchant's token (`POST /v2/GetPaymentStatus`) and it is `Paid` for our amount. This runs when the shopper returns and when a notification arrives (webhook v1 and v2 shapes are both understood; only the invoice id is taken from them, so MyFatoorah's separate webhook secret is not needed).
+- Failed attempts, pay again, duplicate payments: same behaviour as Tap.
+
+How it was verified, honestly:
+- **Automated tests** (14 API tests, 3 browser tests) run against a local stand-in (`apps/e2e/fake-myfatoorah.mjs`) built from MyFatoorah's documentation.
+- **Real MyFatoorah sandbox, by hand on 2026-11-13**, with the public test token printed in MyFatoorah's documentation: one `SendPayment` call with the same fields the adapter sends created an invoice and returned its page address. Nothing else was checked on the real sandbox.
+- **Not verified with real MyFatoorah:** the token check call (`InitiatePayment`) and the HTTP status for a wrong token, `GetPaymentStatus` on a real invoice (the response shape is taken from the documentation), a completed payment, the redirect back, notifications, any live country account. Jordan and Egypt accounts are not offered (JOD and EGP are not store currencies yet).
+
+**Next providers** (not started): Hesabe, Tabby, Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+
+Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/api` 200, Playwright 63.
 
 ## Phase 6 — Remaining 20 templates and visual builder
 Section-based editor with drag and drop, device previews, colour and typography editors, header/footer builders, undo/redo, version history, sanitised custom CSS.

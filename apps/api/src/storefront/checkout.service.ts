@@ -277,11 +277,16 @@ export class CheckoutService {
     const { order, adapter, credentials } = await this.tx(shop, (tx) => this.onlineOrder(tx, shop, token));
     if (order.paymentStatus !== 'UNPAID' || !adapter?.fetchStatus || !credentials) return { checked: false };
     // Only references we created for this order are ever looked up.
-    const payment = order.payments.find((p) => p.providerRef && p.providerRef === ref) ?? order.payments.find((p) => p.providerRef);
-    if (!payment?.providerRef) return { checked: false };
-    const event = await adapter.fetchStatus({ providerRef: payment.providerRef, credentials });
-    await this.tx(shop, (tx) => this.settlement.apply(tx, shop.storeId, adapter.id, event, sha256(event.eventId)));
-    return { checked: true };
+    const own = order.payments.filter((p): p is typeof p & { providerRef: string } => !!p.providerRef && p.status !== 'PAID');
+    const named = own.find((p) => p.providerRef === ref);
+    // The attempt the provider named first, then the others (an earlier payment page may have been the one that was paid).
+    const candidates = named ? [named, ...own.filter((p) => p !== named)] : own;
+    for (const payment of candidates) {
+      const event = await adapter.fetchStatus({ providerRef: payment.providerRef, credentials });
+      await this.tx(shop, (tx) => this.settlement.apply(tx, shop.storeId, adapter.id, event, sha256(event.eventId)));
+      if (event.outcome === 'paid') break;
+    }
+    return { checked: candidates.length > 0 };
   }
 
   /** A new payment attempt for an unpaid online order (the first page was closed, or the payment failed). */

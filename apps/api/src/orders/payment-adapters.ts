@@ -7,6 +7,9 @@ import { ENV, type Env } from '../config/env';
 export interface CredentialField {
   key: string;
   label: { ar: string; en: string };
+  /** `secret` (default) is write-only. `select` is a non-secret choice whose current value may be shown back to the merchant. */
+  type?: 'secret' | 'select';
+  options?: readonly { value: string; label: { ar: string; en: string } }[];
 }
 
 /** What a provider told us in a webhook, after its signature was verified. */
@@ -61,7 +64,7 @@ export interface PaymentAdapter {
    * Called when a merchant saves credentials: rejects a malformed or refused key
    * (`invalid_payment_credentials`) and reports whether the key is a test or a live one.
    */
-  checkCredentials?(credentials: Record<string, string>): Promise<{ mode: 'test' | 'live' }>;
+  checkCredentials?(credentials: Record<string, string>, store: { currency: string }): Promise<{ mode: 'test' | 'live' }>;
   /** Test or live, read from stored credentials without calling the provider. */
   mode?(credentials: Record<string, string>): 'test' | 'live' | null;
 }
@@ -252,6 +255,154 @@ export class TapAdapter implements PaymentAdapter {
   }
 }
 
+type MfEnvelope = { IsSuccess?: unknown; Message?: unknown; Data?: Record<string, unknown> | null };
+
+/**
+ * MyFatoorah (https://docs.myfatoorah.com), hosted invoice flow:
+ *  1. POST /v2/SendPayment (NotificationOption LNK) returns `InvoiceId` and `InvoiceURL`,
+ *     MyFatoorah's page with the methods enabled on the merchant's account (KNET, cards, ...).
+ *  2. MyFatoorah sends the shopper back to `CallBackUrl` / `ErrorUrl` and posts a webhook.
+ *  3. Neither is trusted: the invoice is read back with POST /v2/GetPaymentStatus using the
+ *     merchant's token, and only `InvoiceStatus = Paid` for our amount pays the order.
+ *
+ * Each merchant enters their own API token and says which MyFatoorah account it belongs to,
+ * because MyFatoorah has a different API address per country and the token does not say which.
+ * The invoice amount is in the account's base currency, so the store currency must be that currency.
+ */
+export class MyFatoorahAdapter implements PaymentAdapter {
+  static readonly ACCOUNTS: Record<string, { url: string; currency: string; ar: string; en: string }> = {
+    test: { url: 'https://apitest.myfatoorah.com', currency: 'KWD', ar: 'حساب تجريبي (Demo)', en: 'Test (demo) account' },
+    KW: { url: 'https://api.myfatoorah.com', currency: 'KWD', ar: 'الكويت', en: 'Kuwait' },
+    BH: { url: 'https://api.myfatoorah.com', currency: 'BHD', ar: 'البحرين', en: 'Bahrain' },
+    OM: { url: 'https://api.myfatoorah.com', currency: 'OMR', ar: 'عُمان', en: 'Oman' },
+    SA: { url: 'https://api-sa.myfatoorah.com', currency: 'SAR', ar: 'السعودية', en: 'Saudi Arabia' },
+    AE: { url: 'https://api-ae.myfatoorah.com', currency: 'AED', ar: 'الإمارات', en: 'UAE' },
+    QA: { url: 'https://api-qa.myfatoorah.com', currency: 'QAR', ar: 'قطر', en: 'Qatar' },
+  };
+  readonly id = 'myfatoorah';
+  readonly kind = 'online' as const;
+  readonly name = { ar: 'ماي فاتورة (كي نت / بطاقة)', en: 'MyFatoorah (KNET / card)' };
+  readonly credentialFields: readonly CredentialField[] = [
+    { key: 'apiToken', label: { ar: 'مفتاح الربط (API Token)', en: 'API token' } },
+    {
+      key: 'account', label: { ar: 'بلد حساب ماي فاتورة', en: 'MyFatoorah account country' }, type: 'select',
+      options: Object.entries(MyFatoorahAdapter.ACCOUNTS).map(([value, a]) => ({ value, label: { ar: a.ar, en: a.en } })),
+    },
+  ];
+  private readonly logger = new Logger('MyFatoorah');
+  static readonly TOKEN_FORMAT = /^[A-Za-z0-9_\-.+/=]{20,2000}$/;
+  static readonly INVOICE_ID = /^[0-9]{1,18}$/;
+
+  /** `overrideUrl` replaces every country address; it is set only by the automated tests. */
+  constructor(private readonly overrideUrl?: string) {}
+
+  private account(credentials: Record<string, string>) {
+    const account = MyFatoorahAdapter.ACCOUNTS[credentials['account'] ?? ''];
+    const token = credentials['apiToken'] ?? '';
+    if (!account || !MyFatoorahAdapter.TOKEN_FORMAT.test(token)) throw new BadRequestException('invalid_payment_credentials');
+    return { token, currency: account.currency, url: this.overrideUrl ?? account.url };
+  }
+
+  mode(credentials: Record<string, string>): 'test' | 'live' | null {
+    const key = credentials['account'] ?? '';
+    return key in MyFatoorahAdapter.ACCOUNTS ? (key === 'test' ? 'test' : 'live') : null;
+  }
+
+  private async call(credentials: Record<string, string>, path: string, body: unknown): Promise<{ status: number; data: MfEnvelope }> {
+    const { token, url } = this.account(credentials);
+    let res: Response;
+    try {
+      res = await fetch(`${url}${path}`, {
+        method: 'POST', signal: AbortSignal.timeout(10_000),
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+    } catch (e) {
+      this.logger.warn(`MyFatoorah ${path} unreachable: ${(e as Error).name}`);
+      throw new BadGatewayException('payment_provider_unreachable');
+    }
+    let data: MfEnvelope = {};
+    try { data = (await res.json()) as MfEnvelope; } catch { /* a non-JSON body is handled by the status code */ }
+    return { status: res.status, data };
+  }
+
+  async checkCredentials(credentials: Record<string, string>, store: { currency: string }) {
+    const { currency } = this.account(credentials);
+    // The invoice amount is always in the account's own currency; a store selling in another currency would charge the wrong amount.
+    if (currency !== store.currency) throw new BadRequestException('payment_currency_mismatch');
+    // A cheap authenticated call that creates nothing: MyFatoorah answers 401 for a token it does not accept.
+    const { status, data } = await this.call(credentials, '/v2/InitiatePayment', { InvoiceAmount: 1, CurrencyIso: currency });
+    if (status === 401 || status === 403) throw new BadRequestException('invalid_payment_credentials');
+    if (status >= 300 || data.IsSuccess !== true) throw new BadGatewayException('payment_provider_unreachable');
+    return { mode: this.mode(credentials)! };
+  }
+
+  async initiate(input: InitiateInput) {
+    const { currency } = this.account(input.credentials);
+    if (currency !== input.currency) throw new BadGatewayException('payment_provider_error');
+    const rule = PHONE_RULES[input.customer.country];
+    const digits = input.customer.phone.replace(/\D/g, '');
+    const phone = rule && digits.startsWith(rule.dial) ? { MobileCountryCode: `+${rule.dial}`, CustomerMobile: digits.slice(rule.dial.length) } : {};
+    const { status, data } = await this.call(input.credentials, '/v2/SendPayment', {
+      CustomerName: input.customer.name.slice(0, 100),
+      NotificationOption: 'LNK',
+      InvoiceValue: Number(fromMinor(input.amount, input.currency)),
+      DisplayCurrencyIso: input.currency,
+      ...phone,
+      ...(input.customer.email ? { CustomerEmail: input.customer.email } : {}),
+      Language: input.locale === 'ar' ? 'AR' : 'EN',
+      CustomerReference: input.orderId,
+      UserDefinedField: `${input.storeName} #${input.orderNumber}`.slice(0, 200),
+      CallBackUrl: input.returnUrl,
+      ErrorUrl: input.returnUrl,
+      // MyFatoorah only calls https addresses.
+      ...(input.webhookUrl?.startsWith('https://') ? { WebhookUrl: input.webhookUrl } : {}),
+    });
+    const id = data.Data?.['InvoiceId'];
+    const url = data.Data?.['InvoiceURL'];
+    if (status === 401 || status === 403) throw new BadGatewayException('payment_provider_rejected_credentials');
+    if (status >= 300 || data.IsSuccess !== true || (typeof id !== 'number' && typeof id !== 'string') || !MyFatoorahAdapter.INVOICE_ID.test(String(id)) || typeof url !== 'string' || !/^https?:\/\//.test(url)) {
+      this.logger.warn(`MyFatoorah refused invoice for order ${input.orderId}: HTTP ${status} ${String(data.Message ?? '').slice(0, 200)}`);
+      throw new BadGatewayException('payment_provider_error');
+    }
+    return { providerRef: String(id), redirectUrl: url };
+  }
+
+  async fetchStatus(input: { providerRef: string; credentials: Record<string, string> }): Promise<VerifiedWebhook> {
+    if (!MyFatoorahAdapter.INVOICE_ID.test(input.providerRef)) throw new BadRequestException('invalid_payment_reference');
+    const { currency } = this.account(input.credentials);
+    const { status, data } = await this.call(input.credentials, '/v2/GetPaymentStatus', { Key: input.providerRef, KeyType: 'InvoiceId' });
+    const d = data.Data;
+    if (status >= 300 || data.IsSuccess !== true || !d || String(d['InvoiceId']) !== input.providerRef || typeof d['InvoiceStatus'] !== 'string') throw new BadGatewayException('payment_provider_error');
+    const invoiceStatus = d['InvoiceStatus'].toUpperCase();
+    const attempts = Array.isArray(d['InvoiceTransactions']) ? (d['InvoiceTransactions'] as { TransactionStatus?: unknown }[]) : [];
+    // An invoice stays "Pending" after a failed attempt (the shopper may try again on the same page).
+    const allFailed = attempts.length > 0 && attempts.every((a) => ['FAILED', 'CANCELED'].includes(String(a.TransactionStatus).toUpperCase()));
+    const outcome = invoiceStatus === 'PAID' ? 'paid' : invoiceStatus === 'CANCELED' || (invoiceStatus === 'PENDING' && allFailed) ? 'failed' : 'ignored';
+    const decimals = decimalsOf(currency);
+    const amount = typeof d['InvoiceValue'] === 'number' && decimals !== null ? toMinor(d['InvoiceValue'].toFixed(decimals), currency) : null;
+    return {
+      // MyFatoorah has no event id we can rely on; an invoice reaches "paid" once, and each failed attempt is counted.
+      eventId: outcome === 'failed' ? `${input.providerRef}:FAILED:${attempts.length}` : `${input.providerRef}:${invoiceStatus}`,
+      type: `invoice.${invoiceStatus.toLowerCase()}`, providerRef: input.providerRef, outcome,
+      // "InvoiceValue" is documented as the total in the account's base currency, which is the store's currency (checked when the token is saved).
+      amount: amount ?? undefined, currency,
+    };
+  }
+
+  /**
+   * A notification only tells us which invoice to look at (webhook v1: `Data.InvoiceId`,
+   * v2: `Data.Invoice.Id`). The decision is made from GetPaymentStatus with the merchant's
+   * token, so MyFatoorah's separate webhook secret is not needed and a forged notification is harmless.
+   */
+  async verifyWebhook(input: { rawBody: Buffer; headers: Record<string, string | string[] | undefined>; credentials: Record<string, string> }) {
+    let body: { Data?: { InvoiceId?: unknown; Invoice?: { Id?: unknown } } };
+    try { body = JSON.parse(input.rawBody.toString('utf8')) as typeof body; } catch { throw new UnauthorizedException('invalid_payload'); }
+    const id = String(body?.Data?.Invoice?.Id ?? body?.Data?.InvoiceId ?? '');
+    if (!MyFatoorahAdapter.INVOICE_ID.test(id)) throw new UnauthorizedException('invalid_payload');
+    return this.fetchStatus({ providerRef: id, credentials: input.credentials });
+  }
+}
+
 @Injectable()
 export class PaymentRegistry {
   private readonly adapters = new Map<string, PaymentAdapter>();
@@ -259,6 +410,7 @@ export class PaymentRegistry {
   constructor(@Inject(ENV) env: Env) {
     this.add(new CashOnDeliveryAdapter());
     this.add(new TapAdapter(env.TAP_API_URL.replace(/\/+$/, '')));
+    this.add(new MyFatoorahAdapter(env.MYFATOORAH_API_URL?.replace(/\/+$/, '')));
     if (env.NODE_ENV === 'test') this.add(new TestGatewayAdapter());
   }
 

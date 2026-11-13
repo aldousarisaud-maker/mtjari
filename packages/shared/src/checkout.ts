@@ -48,7 +48,7 @@ export type CheckoutSettingsInput = z.infer<typeof checkoutSettingsSchema>;
 export const paymentMethodUpdateSchema = z.strictObject({
   enabled: z.boolean(),
   /** Only sent when the merchant enters or replaces credentials; never returned by the API. */
-  credentials: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/), z.string().trim().min(1).max(500)).optional(),
+  credentials: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/), z.string().trim().min(1).max(2000)).optional(),
 });
 export type PaymentMethodUpdateInput = z.infer<typeof paymentMethodUpdateSchema>;
 

@@ -45,7 +45,11 @@ export class PaymentMethodsService {
       return {
         provider: a.id, kind: a.kind, name: a.name,
         // Field names only. Stored values are never sent back.
-        credentialFields: a.credentialFields.map((f) => ({ key: f.key, label: f.label })),
+        credentialFields: a.credentialFields.map((f) => ({
+          key: f.key, label: f.label, type: f.type ?? 'secret', options: f.options ?? null,
+          // Only non-secret choices are shown back.
+          value: f.type === 'select' ? creds[f.key] ?? null : null,
+        })),
         configured, enabled: !!row?.enabled && configured,
         // Whether the stored key is a test or a live one (online providers only); the key itself is not sent.
         mode: configured ? a.mode?.(creds) ?? null : null,
@@ -60,9 +64,19 @@ export class PaymentMethodsService {
       const allowed = new Set(adapter.credentialFields.map((f) => f.key));
       if (Object.keys(input.credentials).some((k) => !allowed.has(k))) throw new BadRequestException('unknown_credential_field');
     }
+    const ctx = { storeId: t.storeId, userId: t.userId };
     // New credentials are checked with the provider before they are stored, so a mistyped key is caught here and not at a shopper's checkout.
-    const checked = input.credentials && adapter.checkCredentials ? await adapter.checkCredentials(input.credentials) : null;
-    return this.prisma.tx({ storeId: t.storeId, userId: t.userId }, async (tx) => {
+    let checked: { mode: 'test' | 'live' } | null = null;
+    if (input.credentials && adapter.checkCredentials) {
+      const before = await this.prisma.tx(ctx, async (tx) => ({
+        creds: this.decrypt(t.storeId, provider, (await tx.paymentMethod.findUnique({ where: { storeId_provider: { storeId: t.storeId, provider } } }))?.credentialsEnc ?? null),
+        store: await tx.store.findUniqueOrThrow({ where: { id: t.storeId }, select: { currency: true } }),
+      }));
+      const merged = { ...before.creds, ...input.credentials };
+      if (!this.configured(adapter, merged)) throw new BadRequestException('payment_credentials_required');
+      checked = await adapter.checkCredentials(merged, before.store);
+    }
+    return this.prisma.tx(ctx, async (tx) => {
       const existing = await tx.paymentMethod.findUnique({ where: { storeId_provider: { storeId: t.storeId, provider } } });
       const creds = { ...this.decrypt(t.storeId, provider, existing?.credentialsEnc ?? null), ...(input.credentials ?? {}) };
       if (input.enabled && !this.configured(adapter, creds)) throw new BadRequestException('payment_credentials_required');

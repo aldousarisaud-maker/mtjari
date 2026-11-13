@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { PERMISSIONS, currencyDecimals, formatMoney, fromMinor } from '@mtjari/shared';
 import { addKuwaitZonesAction, createZoneAction, deleteZoneAction, saveCheckoutSettingsAction, setPaymentMethodAction, updateZoneAction } from '@/app/order-actions';
 import { ActionForm, SubmitButton } from '@/components/action-form';
-import { Badge, Card, Field, Input } from '@/components/ui';
+import { Badge, Card, Field, Input, Select } from '@/components/ui';
 import { api } from '@/lib/api';
 import { isLocale, t } from '@/lib/i18n';
 import { can, getStore } from '../data';
@@ -10,7 +10,7 @@ import { RowAction } from '../row-action';
 
 interface Zone { id: string; nameAr: string; nameEn: string; fee: number; freeAbove: number | null; isActive: boolean }
 interface Settings { pickupEnabled: boolean; pickupInstructionsAr: string; pickupInstructionsEn: string; minOrderAmount: number }
-interface Method { provider: string; kind: 'offline' | 'online'; name: { ar: string; en: string }; credentialFields: { key: string; label: { ar: string; en: string } }[]; configured: boolean; enabled: boolean; mode: 'test' | 'live' | null }
+interface Method { provider: string; kind: 'offline' | 'online'; name: { ar: string; en: string }; credentialFields: { key: string; label: { ar: string; en: string }; type: 'secret' | 'select'; options: { value: string; label: { ar: string; en: string } }[] | null; value: string | null }[]; configured: boolean; enabled: boolean; mode: 'test' | 'live' | null }
 
 export default async function DeliveryPage({ params }: { params: Promise<{ locale: string; storeId: string }> }) {
   const { locale, storeId } = await params;
@@ -66,14 +66,21 @@ export default async function DeliveryPage({ params }: { params: Promise<{ local
                   {m.mode ? <Badge className={m.mode === 'live' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} data-testid={`mode-${m.provider}`}>{t(l, `d.mode.${m.mode}`)}</Badge> : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">{t(l, `d.kind.${m.kind}`)}</p>
-                {m.mode ? <p className="mt-1 text-xs text-slate-500">{t(l, `d.modeHint.${m.mode}`)}</p> : null}
-                {m.provider === 'tap' && !m.enabled ? <p className="mt-2 text-sm text-slate-600">{t(l, 'd.help.tap')}</p> : null}
+                {m.mode ? <p className="mt-1 text-xs text-slate-500">{t(l, m.provider === 'myfatoorah' ? `d.modeHint.myfatoorah.${m.mode}` : `d.modeHint.${m.mode}`)}</p> : null}
+                {(m.provider === 'tap' || m.provider === 'myfatoorah') && !m.enabled ? <p className="mt-2 text-sm text-slate-600">{t(l, `d.help.${m.provider}`)}</p> : null}
                 <ActionForm action={setPaymentMethodAction} className="mt-3 space-y-3">
                   <Hidden /><input type="hidden" name="provider" value={m.provider} /><input type="hidden" name="enabled" value={m.enabled ? 'false' : 'true'} />
                   {/* Secrets are write-only: the stored value is never sent to the browser. */}
-                  {!m.enabled ? m.credentialFields.map((f) => (
+                  {!m.enabled ? m.credentialFields.map((f) => f.type === 'select' ? (
+                    <Field key={f.key} label={f.label[l]} htmlFor={`cred-${m.provider}-${f.key}`}>
+                      <Select id={`cred-${m.provider}-${f.key}`} name={`cred.${f.key}`} defaultValue={f.value ?? ''} required>
+                        <option value="" disabled>{t(l, 'd.choose')}</option>
+                        {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label[l]}</option>)}
+                      </Select>
+                    </Field>
+                  ) : (
                     <Field key={f.key} label={f.label[l]} htmlFor={`cred-${m.provider}-${f.key}`} hint={m.configured ? t(l, 'd.credsSaved') : undefined}>
-                      <Input id={`cred-${m.provider}-${f.key}`} name={`cred.${f.key}`} type="password" autoComplete="off" dir="ltr" required={!m.configured} maxLength={500} />
+                      <Input id={`cred-${m.provider}-${f.key}`} name={`cred.${f.key}`} type="password" autoComplete="off" dir="ltr" required={!m.configured} maxLength={2000} />
                     </Field>
                   )) : null}
                   <SubmitButton size="sm" variant={m.enabled ? 'ghost' : 'primary'}>{t(l, m.enabled ? 'd.disable' : 'd.enable')}</SubmitButton>

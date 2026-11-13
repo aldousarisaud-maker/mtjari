@@ -1,6 +1,6 @@
 # Mtjari.cc — Payment Integrations
 
-Status: **Cash on Delivery and Tap Payments are built.** Tap was built from its official documentation and partly checked on its real sandbox (see "Tap Payments" below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
+Status: **Cash on Delivery, Tap Payments and MyFatoorah are built.** Tap and MyFatoorah were built from their official documentation and only partly checked on their real sandboxes (see their sections below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
 
 ## Principles
 
@@ -55,6 +55,20 @@ Environment: `TAP_API_URL` (default `https://api.tap.company`), `API_PUBLIC_URL`
 
 Verified on the real sandbox: key rejection (401), charge creation, reading an unpaid charge. Not yet verified: a completed payment, the redirect back, the notification and its hash, live mode. To verify on a server: enter a Tap test key in a store, pay with a Tap test card, and watch the API log for `hashstring missing or different`.
 
+## MyFatoorah (built)
+
+Source: https://docs.myfatoorah.com (API Key, SendPayment, GetPaymentStatus, Webhook, Webhook V2 pages, read 2026-11-13).
+
+| Step | What happens |
+|---|---|
+| Merchant setup | Pastes the API token and chooses the account: demo, KW, BH, OM (`api.myfatoorah.com`), SA (`api-sa`), AE (`api-ae`), QA (`api-qa`); demo uses `apitest.myfatoorah.com`. The account currency must equal the store currency. The token is checked with `POST /v2/InitiatePayment`; 401 means refused. Stored encrypted. |
+| Start payment | `POST /v2/SendPayment` with `Authorization: Bearer <token>`: `NotificationOption: LNK`, `InvoiceValue` in major units, `DisplayCurrencyIso`, customer name/mobile/email, `Language`, `CustomerReference` = our order id, `CallBackUrl` and `ErrorUrl` = the private order page, `WebhookUrl` when `API_PUBLIC_URL` is https. The shopper is sent to `InvoiceURL`; we keep `InvoiceId`. |
+| Shopper returns | MyFatoorah adds `?paymentId=…`. The web app calls `sync-payment`; the API reads the invoices **it created for this order** and settles. |
+| Notification | From the body we take only the invoice id (`Data.Invoice.Id` in v2, `Data.InvoiceId` in v1), then call `GetPaymentStatus`. The `myfatoorah-signature` header is not used. |
+| Paid | `InvoiceStatus = Paid` and `InvoiceValue` equal to our amount. `Canceled`, or `Pending` with only failed attempts, marks the attempt failed (a later payment of the same invoice still pays the order). |
+
+Limits: MyFatoorah does not allow `localhost` return addresses and needs https for webhooks, so this can only be tried end to end on a real server. Verified on the real sandbox: one `SendPayment` call. Everything else follows the documentation and is unverified.
+
 ## Gateway manager features → where they live
 
 | Feature | Implementation |
@@ -76,7 +90,7 @@ Columns: what the provider is, what Mtjari needs from each merchant, and open qu
 | Provider | Type | Typical markets | Needed from the merchant | To confirm before building |
 |---|---|---|---|---|
 | **Tap Payments** | Gateway/PSP | KW, SA, AE, BH, QA, OM | Tap business account, secret + publishable keys (test and live) | Current API version, webhook hash scheme, KNET/mada/Apple Pay enablement per account, marketplace vs direct |
-| **MyFatoorah** | Gateway/PSP | KW, SA, AE, BH, QA, OM | MyFatoorah account, API token per country portal | Per-country base URLs, webhook signature secret, refund limits |
+| **MyFatoorah** (built) | Gateway/PSP | KW, SA, AE, BH, QA, OM | MyFatoorah account, API token per country portal | Real `GetPaymentStatus` response, wrong-token status code, refund API |
 | **Hesabe** | Gateway | KW | Merchant code, access code, secret key, IV | Encryption scheme of requests/responses, refund API availability, supported currencies |
 | **Tabby** | BNPL | SA, AE, KW (confirm others) | Tabby merchant account, public + secret keys, merchant code per currency | Country/currency list, pre-scoring call, capture/close/refund flow, webhook auth header |
 | **Tamara** | BNPL | SA, AE, KW (confirm others) | Tamara merchant account, API token, notification token | Order authorise/capture steps, webhook JWT verification, min/max amounts |

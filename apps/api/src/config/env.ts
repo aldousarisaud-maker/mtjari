@@ -50,6 +50,8 @@ export const envSchema = z.object({
   // Public address of this API as payment providers reach it (webhooks). Without it, payments are confirmed when the shopper returns.
   API_PUBLIC_URL: z.string().url().optional(),
   TAP_API_URL: z.string().url().default('https://api.tap.company'),
+  // Tests only: replaces MyFatoorah's per-country API addresses.
+  MYFATOORAH_API_URL: z.string().url().optional(),
   LOGIN_MAX_FAILURES: z.coerce.number().int().min(3).default(10),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).default(15),
   MAX_STORES_PER_USER: z.coerce.number().int().min(1).default(5),

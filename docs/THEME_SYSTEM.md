@@ -1,6 +1,15 @@
 # Mtjari.cc — Theme System
 
-Status: **design only** (Phases 3 and 6). The dashboard's own visual language (glass cards, #2563EB, IBM Plex Sans Arabic) is implemented in `apps/web`; storefront themes are not.
+Status: **first five themes implemented and tested (Phase 3)**. The rest of this document is the target design; the section-based layout editor and the other 20 themes are Phase 6.
+
+## Implemented in Phase 3
+
+- Theme ids and the settings schema live in `packages/shared/src/themes.ts` (one Zod schema, shared by API and web).
+- A theme is a module in `apps/web/src/storefront/themes/` exporting `{ id, root, ui, buy, Layout, Home, Card, Product }`. Listing, search and cart pages are shared views styled through the theme's `ui` classes.
+- `store_themes` holds one row per (store, theme) with `draft` and `published` JSON. `stores.theme_id` is the live theme. Switching theme only changes that pointer.
+- Settings today: primary and accent colour, announcement bar (ar/en), hero title and subtitle (ar/en), featured category, home product count. Text is plain text only; colours must be hex.
+- Preview uses a signed token bound to store + theme, valid 30 minutes.
+- Not yet: page layouts as sections, logo/typography editors, version history, custom CSS.
 
 ## Goals
 

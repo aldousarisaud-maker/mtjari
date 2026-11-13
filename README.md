@@ -36,13 +36,13 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#1-local-development-verified). In sh
 ## Tests
 
 ```bash
-pnpm test                       # 160 tests: validation, money, CSV, RLS isolation, API unit + HTTP
-pnpm --filter @mtjari/e2e e2e   # 27 browser tests of the full journey (desktop and mobile)
+pnpm test                       # 199 tests: validation, money, CSV, themes, RLS isolation, API unit + HTTP
+pnpm --filter @mtjari/e2e e2e   # 48 browser tests: dashboard and storefront journeys, all five themes (desktop and mobile)
 ```
 
 All suites run against a real PostgreSQL database using the same restricted role as production; browser tests also use real SMTP delivery to a local sink.
 
-## API (Phases 1–2)
+## API (Phases 1–3)
 
 | Area | Endpoints |
 |---|---|
@@ -53,4 +53,6 @@ All suites run against a real PostgreSQL database using the same restricted role
 | Audit | `GET /v1/stores/:storeId/audit-logs` |
 | Catalogue | `GET/POST .../categories`, `PATCH/DELETE .../categories/:id`, same for `brands`; `GET/POST .../products`, `GET/PATCH/DELETE .../products/:id`, `PUT .../products/:id/variants`, `PUT .../products/:id/relations`, `POST .../products/:id/media`, `PATCH/DELETE .../products/:id/media/:mediaId`, `GET .../products/export`, `POST .../products/import`, `GET .../catalog/summary` |
 | Inventory | `GET .../inventory`, `POST .../inventory/adjust`, `GET .../inventory/movements` |
+| Theme and launch | `GET .../theme`, `POST .../theme/draft`, `POST .../theme/publish`, `POST .../theme/preview-token`, `POST .../launch`, `POST .../unlaunch` |
+| Storefront (public, by `x-store-host`) | `GET /v1/storefront/{store,products,products/:slug,sitemap,cart}`, `POST /v1/storefront/cart/items`, `PATCH /v1/storefront/cart/items/:id` |
 | Ops | `GET /v1/health` |

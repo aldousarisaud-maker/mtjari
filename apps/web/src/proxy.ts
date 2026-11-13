@@ -28,8 +28,51 @@ function refreshOnce(refreshToken: string): Promise<TokenPair | null> {
   return p;
 }
 
+// Hosts that serve the platform itself (landing page, dashboard). Every other host is a merchant's shop.
+const ROOT_DOMAIN = (process.env.ROOT_DOMAIN ?? 'mtjari.cc').toLowerCase();
+const PLATFORM_HOSTS = new Set(
+  [ROOT_DOMAIN, `www.${ROOT_DOMAIN}`, 'localhost', '127.0.0.1', ...(process.env.PLATFORM_HOSTS ?? '').split(',')].map((h) => h.trim().toLowerCase()).filter(Boolean),
+);
+const PREVIEW_COOKIE = 'mtj_preview';
+
+/**
+ * Shop hosts ({slug}.ROOT_DOMAIN or a merchant's own domain) are rewritten to
+ * the internal /s/{host}/... routes. The shop never sees dashboard cookies
+ * logic, and the dashboard is never served on a shop host.
+ */
+function shopProxy(req: NextRequest, host: string) {
+  const { pathname, searchParams } = req.nextUrl;
+  const internal = (path: string) => NextResponse.rewrite(new URL(`/s/${encodeURIComponent(host)}${path}${req.nextUrl.search}`, req.url));
+  if (pathname === '/robots.txt' || pathname === '/sitemap.xml') return internal(pathname);
+
+  // ?preview=<token> from the dashboard: keep it in an httpOnly cookie and clean the URL.
+  const preview = searchParams.get('preview');
+  if (preview !== null) {
+    const url = req.nextUrl.clone();
+    url.searchParams.delete('preview');
+    const res = NextResponse.redirect(url);
+    if (preview === 'off' || !/^[\w.-]{20,300}$/.test(preview)) res.cookies.delete(PREVIEW_COOKIE);
+    else res.cookies.set({ name: PREVIEW_COOKIE, value: preview, httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 30 * 60 });
+    return res;
+  }
+
+  const first = pathname.split('/')[1];
+  if (!isLocale(first)) {
+    const preferred = req.headers.get('accept-language')?.toLowerCase().startsWith('en') ? 'en' : DEFAULT_LOCALE;
+    const url = req.nextUrl.clone();
+    url.pathname = `/${preferred}${pathname === '/' ? '' : pathname}`;
+    return NextResponse.redirect(url);
+  }
+  return internal(pathname);
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const host = (req.headers.get('host') ?? '').replace(/:\d+$/, '').toLowerCase();
+  // The internal shop routes are reachable only through the rewrite above.
+  if (pathname === '/s' || pathname.startsWith('/s/')) return new NextResponse('Not found', { status: 404 });
+  if (!PLATFORM_HOSTS.has(host)) return shopProxy(req, host);
+  if (pathname === '/robots.txt' || pathname === '/sitemap.xml') return NextResponse.next();
   const first = pathname.split('/')[1];
 
   if (!isLocale(first)) {
@@ -66,5 +109,6 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/|api/|favicon.ico|robots.txt|sitemap.xml|.*\\.[a-z0-9]+$).*)'],
+  // Every request except Next's own assets, so internal /s/... routes can never be reached directly.
+  matcher: ['/((?!_next/|favicon\\.ico$).*)'],
 };

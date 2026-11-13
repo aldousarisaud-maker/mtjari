@@ -82,6 +82,8 @@ services:
     depends_on: [api]
     environment:
       API_URL: http://api:4000
+      ROOT_DOMAIN: ${ROOT_DOMAIN}
+      PLATFORM_HOSTS: ${PLATFORM_HOSTS:-}
     networks: [internal]
 
   nginx:

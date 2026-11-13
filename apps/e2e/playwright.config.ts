@@ -40,9 +40,12 @@ export default defineConfig({
         MAIL_TRANSPORT: 'smtp',
         SMTP_URL: 'smtp://127.0.0.1:2525',
         WEB_URL: `http://localhost:${WEB_PORT}`,
+        // Shops are served on {slug}.localhost, which browsers resolve to this machine.
+        ROOT_DOMAIN: 'localhost',
         CORS_ORIGINS: `http://localhost:${WEB_PORT}`,
         THROTTLE_LIMIT: '10000',
         AUTH_THROTTLE_LIMIT: '10000',
+        STOREFRONT_THROTTLE_LIMIT: '100000',
         // Uploaded images go to a throw-away folder and are served by the API.
         STORAGE_DRIVER: 'local',
         STORAGE_LOCAL_DIR: mkdtempSync(join(tmpdir(), 'mtjari-e2e-media-')),
@@ -53,7 +56,7 @@ export default defineConfig({
       command: `pnpm --filter @mtjari/web exec next start -p ${WEB_PORT}`,
       url: `http://localhost:${WEB_PORT}/ar`,
       reuseExistingServer: false,
-      env: { API_URL: `http://127.0.0.1:${API_PORT}` },
+      env: { API_URL: `http://127.0.0.1:${API_PORT}`, ROOT_DOMAIN: 'localhost' },
     },
   ],
 });

@@ -45,7 +45,8 @@ export function ActionForm({
   // rejected form keeps what the merchant typed; it is cleared only on success.
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const data = new FormData(e.currentTarget);
+    // Include the button that was pressed, so forms with several actions know which one.
+    const data = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
     startTransition(() => formAction(data));
   }
   useEffect(() => {

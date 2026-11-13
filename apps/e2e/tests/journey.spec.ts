@@ -40,7 +40,7 @@ test('merchant signs up, verifies email, creates a store and edits it', async ({
   await expect(page).toHaveURL(/\/ar\/dashboard\/[0-9a-f-]{36}$/);
   storeUrl = new URL(page.url()).pathname;
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('متجر الاختبار');
-  await expect(page.getByText('e2e-shop.mtjari.cc').first()).toBeVisible();
+  await expect(page.getByText('e2e-shop.localhost').first()).toBeVisible();
 
   await page.getByLabel('اسم المتجر').fill('عطور الخليج');
   await page.getByLabel('العملة').selectOption('SAR');

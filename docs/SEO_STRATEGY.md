@@ -8,7 +8,15 @@ Status: **design only** except where noted. Targets are engineering goals measur
 - `robots.txt` that keeps the dashboard out of the index; token-bearing pages are `noindex` with `no-referrer`.
 - Self-hosted fonts via `next/font` (no layout shift from late font swaps, no third-party font requests).
 
-## Technical foundation (Phase 3, with the storefront)
+## Implemented in Phase 3 (storefront)
+
+- Server-rendered shop pages (per request, no caching yet) at `/{locale}`, `/{locale}/products`, `/{locale}/c/{slug}`, `/{locale}/p/{slug}`.
+- Self-canonical URLs, `hreflang` ar/en/x-default, per-shop `sitemap.xml` (home, categories, products with `lastmod`) and `robots.txt`.
+- JSON-LD: `WebSite`, `Product` with offers and availability, `BreadcrumbList`.
+- `noindex` for search results, cart and preview mode; unlaunched shops return 404 and an all-disallow robots file.
+- Not yet: 301 redirects for changed slugs, sitemap splitting, image sitemaps, merchant-editable meta per page beyond the product SEO fields.
+
+## Technical foundation (target design)
 
 | Area | Approach |
 |---|---|

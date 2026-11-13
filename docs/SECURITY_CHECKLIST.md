@@ -91,6 +91,17 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, not 
 - [ ] S3 driver has not been exercised against a real bucket.
 - [ ] No antivirus scan of uploads (images are re-encoded, other file types are not accepted).
 
+## Storefront (Phase 3)
+- [x] The shop is chosen by hostname on the server, never by a client-supplied store id; all storefront queries run under that store's RLS context.
+- [x] Unlaunched, suspended and unknown shops return 404; only ACTIVE products are exposed, without cost price or exact stock figures.
+- [x] Cart token is random, stored hashed, httpOnly cookie; a token from one shop is useless on another; prices are never taken from the client.
+- [x] Preview tokens are HMAC-signed, bound to store and theme, expire in 30 minutes, live in an httpOnly cookie and are removed from the URL.
+- [x] Theme settings accept plain text and hex colours only (no markup, no CSS, no URLs).
+- [x] Dashboard and auth pages are not served on shop hosts; internal `/s/...` routes are closed.
+- [x] Search input is escaped for LIKE wildcards; public API has its own per-IP rate limit (`STOREFRONT_THROTTLE_LIMIT`).
+- [ ] Rate limiting per shopper IP depends on nginx setting `X-Forwarded-For`; not yet verified on a real server.
+- [ ] Cart cookies are per host, so a shop's subdomain and its custom domain have separate carts.
+
 ## Known limitations today
 - Images uploaded with the local storage driver live on one server's disk; use the S3 driver before running more than one API instance.
 - Rate-limit counters and the web tier's refresh single-flight are in process memory. Fine for one instance of each; both move to Redis before horizontal scaling (Phase 4, when Redis is introduced).

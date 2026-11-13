@@ -45,6 +45,7 @@ export const envSchema = z.object({
   MAIL_TRANSPORT: z.enum(['smtp', 'log']).default('smtp'),
   THROTTLE_LIMIT: z.coerce.number().int().min(1).default(120),
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).default(10),
+  STOREFRONT_THROTTLE_LIMIT: z.coerce.number().int().min(1).default(600),
   LOGIN_MAX_FAILURES: z.coerce.number().int().min(3).default(10),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).default(15),
   MAX_STORES_PER_USER: z.coerce.number().int().min(1).default(5),

@@ -8,7 +8,7 @@ Rule: a phase is finished only when its automated tests pass. The next phase doe
 |---|---|---|
 | 1 | Architecture, database, authentication, multi-tenancy, RBAC, audit logs | **Done and tested** (2026-11-13) |
 | 2 | Merchant dashboard, products, categories, inventory | **Done and tested** (2026-11-13), see the list of what was left out below |
-| 3 | Storefront engine, theme architecture, first 5 templates | Not started |
+| 3 | Storefront engine, theme architecture, first 5 templates | **Done and tested** (2026-11-13), see the list of what was left out below |
 | 4 | Checkout, orders, payment gateway framework | Not started |
 | 5 | Payment providers, webhooks, refunds | Not started |
 | 6 | Remaining 20 templates, visual builder | Not started |
@@ -68,8 +68,33 @@ Tests after Phase 2 (all against real PostgreSQL; browser tests use real SMTP de
 
 **Still needed from you:** an S3-compatible bucket (Cloudflare R2, AWS S3, DigitalOcean Spaces or Backblaze B2) with endpoint, region, bucket name and an access key, before a staging server holds real images. Until then images are stored on the server disk.
 
-## Phase 3 — Storefront engine, theme architecture, first 5 templates
-Host-based tenant resolution with caching, storefront routes (home, collection, product, cart, account, pages), theme contract and settings schema, draft/publish, theme switching without data loss, first five themes (Modern Electronics, Luxury Fashion, Perfume Boutique, Coffee House, Gulf Premium), custom-domain verification and automatic SSL, sitemap/robots/canonical basics. See THEME_SYSTEM.md.
+## Phase 3 — what exists
+
+- **Shop by hostname.** `{slug}.ROOT_DOMAIN` (and any `store_domains` row with status VERIFIED/ACTIVE) is served as that store's shop. The web tier rewrites shop hosts to internal routes; the dashboard and login do not exist on shop hosts and internal routes cannot be opened directly. The API resolves the store from the host and runs every query inside that store's RLS context.
+- **Launch gate.** A shop is public only when the merchant has published a theme and pressed "launch", which requires at least one active product. Before that the address returns 404. Launch and unlaunch are audited.
+- **Public storefront API** (`/v1/storefront/*`): store info and navigation, product list (category incl. sub-categories, search, sort by newest/price, pagination), product detail (never exposes cost price or exact stock), sitemap data, anonymous cart.
+- **Cart.** Random token in an httpOnly cookie (only its hash is stored), prices and stock always read from the catalogue, quantity limits, lines flagged when a product becomes unavailable. There is no checkout button yet; the cart says ordering opens soon (Phase 4).
+- **Theme architecture.** Five themes with separate markup, fonts and layout: Modern Electronics, Luxury Fashion, Perfume Boutique, Coffee House, Gulf Premium. Settings per theme (two colours, announcement bar, hero texts, featured category, number of home products) validated by one schema; draft and published copies per (store, theme), so switching theme and switching back loses nothing and never touches products.
+- **Dashboard → "Store and theme"**: status card with the shop address, theme gallery, settings form, private preview (signed 30-minute token kept in an httpOnly cookie, pages marked noindex), publish, launch.
+- **SEO basics** per shop: canonical URLs, `hreflang` ar/en/x-default, Product + Breadcrumb + WebSite structured data, `sitemap.xml`, `robots.txt`; search, cart and preview pages are noindex.
+- Arabic RTL and English LTR for every page of every theme; content falls back to the other language when a translation is missing.
+
+Tests after Phase 3:
+
+| Suite | Count | New in Phase 3 |
+|---|---|---|
+| `packages/shared` | 39 | Theme settings validation and defaults |
+| `packages/db` | 31 | RLS and cross-store foreign keys for theme and cart tables, quantity limits |
+| `apps/api` | 129 | Host resolution, launch gate, preview tokens, product visibility, search escaping, cart rules, cross-shop cart tokens refused, theme permissions |
+| `apps/e2e` (Playwright) | 48 | Full merchant journey (preview → customise → publish → launch), shopper journey (browse, search, sort, variants, cart), English storefront, SEO output, shop/platform separation, every page of all five themes on desktop and mobile in both languages |
+
+**Planned for Phase 3 but not built** (nothing is faked in the UI):
+- Customer accounts and merchant-written content pages (about, policies). Accounts move to Phase 4 with checkout; pages to Phase 6 with the builder.
+- Custom-domain flow (add domain, DNS verification, automatic SSL). The storefront already serves verified domains, but there is no screen or verification job; it needs a real server to build and test. Shops use `{slug}.mtjari.cc` until then.
+- Caching/ISR: storefront pages are rendered per request. Caching comes with Redis in Phase 4.
+- Section-level layout editing, logo upload, theme version history (Phase 6). Product reviews (Phase 8).
+- Cleanup job for expired carts (with the background worker in Phase 4).
+- Old-slug 301 redirects and merchant-editable robots rules (Phase 7).
 
 ## Phase 4 — Checkout, orders, payment framework
 Cart, guest checkout, country-specific address forms (Kuwait governorates/areas data), delivery zones/fees/slots/pickup, coupons, order state machine and timeline, PDF invoices, payment adapter interface, encrypted credential storage, webhook pipeline with idempotency, Cash on Delivery as the first adapter.
@@ -98,7 +123,7 @@ Load tests, accessibility audit, Core Web Vitals budgets, security review and ex
 |---|---|---|
 | Source control | GitHub repository | Now |
 | Email delivery | SMTP credentials (or Resend/SES) and DNS access for SPF/DKIM on mtjari.cc | Before any real user signs up |
-| Deployment | VPS (min. 4 vCPU / 8 GB), DNS control of mtjari.cc incl. wildcard `*.mtjari.cc` | Phase 3 for staging |
+| Deployment | VPS (min. 4 vCPU / 8 GB), DNS control of mtjari.cc incl. wildcard `*.mtjari.cc` | Now, for staging and custom domains |
 | Media | S3-compatible bucket + CDN | Phase 2 staging |
 | Payments | Merchant/sandbox accounts per provider | Phase 5 |
 | Google | Google Cloud project with OAuth consent screen, Ads developer token, Merchant API access | Phase 7 |

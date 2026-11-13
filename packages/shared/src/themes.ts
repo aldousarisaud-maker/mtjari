@@ -23,7 +23,6 @@ export const themeSettingsSchema = z.strictObject({
   /** Category highlighted on the home page; null = newest products. */
   featuredCategoryId: z.string().uuid().nullable(),
   homeProductLimit: z.number().int().min(4).max(24),
-  showOutOfStock: z.boolean(),
 });
 export type ThemeSettings = z.infer<typeof themeSettingsSchema>;
 
@@ -37,7 +36,7 @@ export interface ThemeManifest {
   defaults: ThemeSettings;
 }
 
-const base = { featuredCategoryId: null, homeProductLimit: 8, showOutOfStock: true } as const;
+const base = { featuredCategoryId: null, homeProductLimit: 8 } as const;
 
 export const THEMES: Record<ThemeId, ThemeManifest> = {
   'modern-electronics': {
@@ -133,7 +132,6 @@ export function resolveThemeSettings(themeId: ThemeId, stored: unknown): ThemeSe
     hero: { ...d.hero, ...obj(s.hero) },
     featuredCategoryId: s.featuredCategoryId === undefined ? d.featuredCategoryId : s.featuredCategoryId,
     homeProductLimit: s.homeProductLimit ?? d.homeProductLimit,
-    showOutOfStock: s.showOutOfStock ?? d.showOutOfStock,
   };
   const parsed = themeSettingsSchema.strip().safeParse(candidate);
   return parsed.success ? parsed.data : d;

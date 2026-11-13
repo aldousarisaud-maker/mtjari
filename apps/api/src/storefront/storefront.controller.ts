@@ -18,11 +18,12 @@ const uuid = new ParseUUIDPipe({ version: '4' });
 /**
  * Public shop API. No login: the shop is chosen by hostname and every query
  * runs inside that store's RLS context. One page view makes several calls,
- * so the per-IP limit is higher than for the dashboard API.
+ * so the per-IP limit is higher than for the dashboard API
+ * (STOREFRONT_THROTTLE_LIMIT per minute, default 600).
  */
 @Public()
 @UseGuards(StorefrontGuard)
-@Throttle({ default: { limit: 600, ttl: 60_000 } })
+@Throttle({ default: { limit: () => Number(process.env.STOREFRONT_THROTTLE_LIMIT) || 600, ttl: 60_000 } })
 @Controller('v1/storefront')
 export class StorefrontController {
   constructor(private readonly shop: StorefrontService, private readonly cart: CartService) {}

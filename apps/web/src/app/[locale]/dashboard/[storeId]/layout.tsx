@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Boxes, FolderTree, KeyRound, LayoutDashboard, Package, ScrollText, Tags, Users } from 'lucide-react';
+import { ArrowRight, Boxes, FolderTree, Palette, KeyRound, LayoutDashboard, Package, ScrollText, Tags, Users } from 'lucide-react';
 import { PERMISSIONS } from '@mtjari/shared';
 import { Badge } from '@/components/ui';
 import { isLocale, statusLabel, t } from '@/lib/i18n';
@@ -17,6 +17,7 @@ export default async function StoreLayout({ children, params }: { children: Reac
     { href: `${base}/categories`, label: t(l, 'side.categories'), icon: FolderTree, show: can(store, PERMISSIONS.PRODUCTS_READ) },
     { href: `${base}/brands`, label: t(l, 'side.brands'), icon: Tags, show: can(store, PERMISSIONS.PRODUCTS_READ) },
     { href: `${base}/inventory`, label: t(l, 'side.inventory'), icon: Boxes, show: can(store, PERMISSIONS.INVENTORY_READ) },
+    { href: `${base}/theme`, label: t(l, 'side.theme'), icon: Palette, show: can(store, PERMISSIONS.THEMES_MANAGE) },
     { href: `${base}/team`, label: t(l, 'side.team'), icon: Users, show: can(store, PERMISSIONS.MEMBERS_READ) },
     { href: `${base}/roles`, label: t(l, 'side.roles'), icon: KeyRound, show: can(store, PERMISSIONS.ROLES_READ) },
     { href: `${base}/audit`, label: t(l, 'side.audit'), icon: ScrollText, show: can(store, PERMISSIONS.AUDIT_READ) },
@@ -26,7 +27,7 @@ export default async function StoreLayout({ children, params }: { children: Reac
       <aside className="glass h-fit min-w-0 p-3 lg:sticky lg:top-24">
         <div className="px-3 pb-3 pt-2">
           <p className="truncate font-semibold">{store.name}</p>
-          <p className="truncate text-xs text-slate-500" dir="ltr">{store.slug}.mtjari.cc</p>
+          <p className="truncate text-xs text-slate-500" dir="ltr">{(store.domains.find((d) => d.isPrimary) ?? store.domains[0])?.hostname ?? store.slug}</p>
           <Badge className="mt-2">{statusLabel(l, store.status)}</Badge>
         </div>
         <nav className="flex gap-1 overflow-x-auto lg:flex-col">

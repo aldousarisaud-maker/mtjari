@@ -1,0 +1,9 @@
+@import 'tailwindcss';
+
+/* Storefront pages get no platform styling: each theme sets its own background, colours and type. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  min-height: 100dvh;
+}

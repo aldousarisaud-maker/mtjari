@@ -43,6 +43,8 @@ pnpm --filter @mtjari/e2e e2e           # Playwright; needs `pnpm build` first
 | `TRUST_PROXY_HOPS` | API | `1` behind nginx → web → API as configured here |
 | `SMTP_URL`, `MAIL_FROM`, `MAIL_TRANSPORT` | API | Production requires `smtp` |
 | `API_URL` | Web | Internal URL of the API |
+| `ROOT_DOMAIN`, `PLATFORM_HOSTS` | Web | `ROOT_DOMAIN` must match the API's. Hosts other than `ROOT_DOMAIN`, `www.ROOT_DOMAIN` and the comma-separated `PLATFORM_HOSTS` are treated as shops |
+| `STOREFRONT_THROTTLE_LIMIT` | API | Public shop API requests per minute per IP (default 600) |
 | `STORAGE_DRIVER`, `STORAGE_LOCAL_DIR`, `STORAGE_PUBLIC_URL` | API | `local` (default; files on the `media` volume, nginx proxies `/media/` to the API) or `s3`. `STORAGE_PUBLIC_URL` is the public base URL of images |
 | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | API | Only with `STORAGE_DRIVER=s3`. Not yet tested against a real bucket |
 | `THROTTLE_LIMIT`, `AUTH_THROTTLE_LIMIT`, `LOGIN_MAX_FAILURES`, `LOGIN_LOCK_MINUTES`, `MAX_STORES_PER_USER` | API | Optional tuning |
@@ -64,7 +66,11 @@ Sizing to start: 4 vCPU, 8 GB RAM, 80 GB SSD, Ubuntu 24.04. Gulf-region or nearb
    Order is enforced by compose: Postgres → `bootstrap` (roles, idempotent) → `migrate` (owner role) → `api` → `web` → `nginx`.
 6. **Verify**: `curl https://mtjari.cc/ar`, API health from inside the network, sign up with a real mailbox.
 
-### Custom merchant domains (Phase 3)
+### Shop subdomains (Phase 3)
+
+The nginx template serves `*.ROOT_DOMAIN` with the wildcard certificate and passes the original `Host` header to the web container, which decides whether the host is the platform or a shop. This is tested locally with `*.localhost`; the nginx and DNS part has not been run on a server yet.
+
+### Custom merchant domains (not built yet)
 
 Wildcard certificates cover `*.mtjari.cc` only. Custom domains need per-domain certificates issued on demand. Plan: replace or front nginx with **Caddy on-demand TLS** (or Traefik with an ACME resolver), with an "ask" endpoint on the API that approves issuance only for hostnames in `store_domains` with status `VERIFIED`. Flow: merchant adds domain → dashboard shows the CNAME/A and TXT records → API verifies the TXT token → status `VERIFIED` → first HTTPS request triggers issuance → status `ACTIVE`; renewal is automatic.
 

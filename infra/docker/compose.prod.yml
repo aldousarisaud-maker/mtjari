@@ -1,0 +1,94 @@
+# Production stack for a single VPS. See docs/DEPLOYMENT.md.
+#   docker compose -f infra/docker/compose.prod.yml --env-file .env.production up -d
+name: mtjari
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?}
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--requirepass', '${REDIS_PASSWORD:?}']
+    volumes: ['redisdata:/data']
+    networks: [internal]
+
+  # Creates roles/databases (idempotent), then applies migrations as the owner role.
+  bootstrap:
+    image: postgres:16-alpine
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?}
+      OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?}
+      APP_PASSWORD: ${DB_APP_PASSWORD:?}
+      DB_NAME: mtjari
+    volumes: ['../postgres/bootstrap.sh:/bootstrap.sh:ro']
+    entrypoint: ['sh', '-c', 'apk add --no-cache bash >/dev/null && bash /bootstrap.sh']
+    networks: [internal]
+    restart: 'no'
+
+  migrate:
+    build: { context: ../.., dockerfile: infra/docker/api.Dockerfile, target: migrate }
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    environment:
+      DATABASE_OWNER_URL: postgresql://mtjari_owner:${DB_OWNER_PASSWORD}@postgres:5432/mtjari
+    networks: [internal]
+    restart: 'no'
+
+  api:
+    build: { context: ../.., dockerfile: infra/docker/api.Dockerfile, target: api }
+    restart: unless-stopped
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://mtjari_app:${DB_APP_PASSWORD}@postgres:5432/mtjari
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?}
+      ENCRYPTION_KEYS: ${ENCRYPTION_KEYS:?}
+      WEB_URL: https://${ROOT_DOMAIN:?}
+      ROOT_DOMAIN: ${ROOT_DOMAIN}
+      CORS_ORIGINS: https://${ROOT_DOMAIN}
+      TRUST_PROXY_HOPS: 1
+      MAIL_TRANSPORT: smtp
+      SMTP_URL: ${SMTP_URL:?}
+      MAIL_FROM: ${MAIL_FROM:?}
+    networks: [internal]
+
+  web:
+    build: { context: ../.., dockerfile: infra/docker/web.Dockerfile, target: web }
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      API_URL: http://api:4000
+    networks: [internal]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    ports: ['80:80', '443:443']
+    volumes:
+      - ../nginx/mtjari.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - certs:/etc/letsencrypt:ro
+      - acme:/var/www/acme:ro
+    environment:
+      ROOT_DOMAIN: ${ROOT_DOMAIN}
+    networks: [internal]
+
+networks:
+  internal:
+volumes:
+  pgdata:
+  redisdata:
+  certs:
+  acme:

@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #2563eb;
+  --color-primary-600: #1d4ed8;
+  --color-secondary: #60a5fa;
+  --color-canvas: #f8fafc;
+  --font-sans: var(--font-plex-arabic), var(--font-inter), ui-sans-serif, system-ui, 'Segoe UI', Tahoma, sans-serif;
+  --radius-card: 1.25rem;
+  --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 12px 32px -12px rgba(15, 23, 42, 0.12);
+}
+
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgba(96, 165, 250, 0.22), transparent 60%),
+    radial-gradient(50rem 28rem at 0% 0%, rgba(37, 99, 235, 0.1), transparent 55%),
+    var(--color-canvas);
+  background-attachment: fixed;
+  color: #0f172a;
+  min-height: 100dvh;
+}
+.dark body {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgba(37, 99, 235, 0.25), transparent 60%),
+    #0b1220;
+  color: #e2e8f0;
+}
+
+@utility glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: var(--shadow-glass);
+  border-radius: var(--radius-card);
+  &:where(.dark, .dark *) {
+    background: rgba(15, 23, 42, 0.6);
+    border-color: rgba(148, 163, 184, 0.16);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

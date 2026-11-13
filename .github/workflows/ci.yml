@@ -1,0 +1,54 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Create throwaway DB roles and write .env
+        run: |
+          OWNER_PW=$(openssl rand -hex 16); APP_PW=$(openssl rand -hex 16)
+          OWNER_PASSWORD=$OWNER_PW APP_PASSWORD=$APP_PW DB_NAME=mtjari_test ./infra/postgres/bootstrap.sh
+          {
+            echo "DATABASE_OWNER_URL=postgresql://mtjari_owner:$OWNER_PW@localhost:5432/mtjari_test"
+            echo "TEST_DATABASE_OWNER_URL=postgresql://mtjari_owner:$OWNER_PW@localhost:5432/mtjari_test"
+            echo "TEST_DATABASE_URL=postgresql://mtjari_app:$APP_PW@localhost:5432/mtjari_test"
+          } > .env
+          cp .env packages/db/.env
+
+      - run: pnpm db:migrate
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      - name: Browser tests
+        run: |
+          pnpm --filter @mtjari/e2e exec playwright install --with-deps chromium
+          pnpm --filter @mtjari/e2e e2e

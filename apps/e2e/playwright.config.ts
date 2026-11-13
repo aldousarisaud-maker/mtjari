@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 import { config as loadDotenv } from 'dotenv';
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 loadDotenv({ path: resolve(__dirname, '../../.env'), quiet: true });
 
@@ -41,6 +43,10 @@ export default defineConfig({
         CORS_ORIGINS: `http://localhost:${WEB_PORT}`,
         THROTTLE_LIMIT: '10000',
         AUTH_THROTTLE_LIMIT: '10000',
+        // Uploaded images go to a throw-away folder and are served by the API.
+        STORAGE_DRIVER: 'local',
+        STORAGE_LOCAL_DIR: mkdtempSync(join(tmpdir(), 'mtjari-e2e-media-')),
+        STORAGE_PUBLIC_URL: `http://127.0.0.1:${API_PORT}/media`,
       },
     },
     {

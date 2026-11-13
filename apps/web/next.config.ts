@@ -14,6 +14,8 @@ const config: NextConfig = {
   outputFileTracingRoot: join(__dirname, '../../'),
   poweredByHeader: false,
   transpilePackages: ['@mtjari/shared'],
+  // Product image uploads pass through a server action on their way to the API.
+  experimental: { serverActions: { bodySizeLimit: '9mb' } },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

@@ -23,6 +23,14 @@ server {
   client_max_body_size 10m;
   server_tokens off;
 
+  # Product images (local storage driver). With S3/CDN storage this block is unused.
+  location /media/ {
+    proxy_pass http://api:4000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    add_header X-Content-Type-Options nosniff always;
+  }
+
   location / {
     limit_req zone=perip burst=60 nodelay;
     proxy_pass http://web:3000;

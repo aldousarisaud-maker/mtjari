@@ -56,9 +56,13 @@ Helper functions: `app_tenant_id()`, `app_user_id()`, `app_is_member(store)`, an
 
 All of these are tenant tables (`store_id` + RLS) unless marked *platform*.
 
-**Phase 2 — Catalogue and inventory**
-`categories` (tree), `brands`, `products` (type SIMPLE/VARIANT/DIGITAL, status, SEO fields, bilingual), `product_options`, `product_option_values`, `product_variants` (SKU, barcode, price, compare-at price, cost, weight), `product_media`, `product_categories`, `product_relations` (related/upsell/cross-sell), `attributes`, `product_attribute_values`, `inventory_levels` (per variant, per location), `inventory_movements` (append-only ledger), `stock_locations`, `media_assets`, `import_jobs`.
-Constraints: unique `(store_id, sku)`, unique `(store_id, slug)`; stock changes only through the movements ledger.
+**Phase 2 — Catalogue and inventory (implemented, migration `catalog`)**
+`categories` (tree via `parent_id`), `brands`, `products` (type SIMPLE/VARIANT/DIGITAL, status DRAFT/ACTIVE/ARCHIVED, bilingual name and description, SEO fields, tags, `deleted_at`), `product_options` (name + ordered values), `product_variants` (option values as JSON, SKU, barcode, `price`, `compare_at_price`, `cost`, `track_inventory`, `stock_quantity`, `low_stock_threshold`), `product_media` (storage key, widths, alt text, position), `product_categories`, `product_relations` (RELATED/UPSELL/CROSS_SELL), `inventory_movements` (append-only ledger: delta, balance after, reason, actor).
+- Money columns are `integer` minor units (1 KWD = 1000, 1 SAR = 100). No floats anywhere.
+- Unique `(store_id, sku)` and `(store_id, slug)`; checks: prices ≥ 0, `compare_at_price > price`, `stock_quantity ≥ 0`.
+- Every child references its parent with a composite `(store_id, id)` foreign key, because foreign-key checks ignore RLS; this makes cross-store references impossible at the database level.
+- `inventory_movements` has INSERT and SELECT grants only. `stock_quantity` is changed only together with a ledger row, under `SELECT ... FOR UPDATE`.
+- Not implemented yet (see IMPLEMENTATION_PLAN): `stock_locations` / per-location levels, `attributes`, `import_jobs`.
 
 **Phase 3 — Storefront and themes**
 `themes` (*platform* catalogue), `store_themes` (installed theme, settings JSON, draft vs published), `theme_versions`, `pages`, `navigation_menus`, `redirects`.

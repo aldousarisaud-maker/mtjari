@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, type ReactNode } from 'react';
+import { createContext, startTransition, useActionState, useContext, useEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Button } from './ui';
 import { cn } from '@/lib/cn';
@@ -16,8 +16,11 @@ export interface ActionState {
 
 export type FormAction = (prev: ActionState, form: FormData) => Promise<ActionState>;
 
+const PendingContext = createContext(false);
+
 export function SubmitButton({ children, variant, size, className }: { children: ReactNode; variant?: 'primary' | 'ghost' | 'danger'; size?: 'md' | 'sm'; className?: string }) {
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  const pending = useContext(PendingContext) || status.pending;
   return (
     <Button type="submit" variant={variant} size={size} disabled={pending} aria-busy={pending} className={className}>
       {pending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : null}
@@ -25,6 +28,8 @@ export function SubmitButton({ children, variant, size, className }: { children:
     </Button>
   );
 }
+
+const INITIAL: ActionState = {};
 
 export function ActionForm({
   action, children, className, render,
@@ -34,10 +39,21 @@ export function ActionForm({
   className?: string;
   render?: (state: ActionState) => ReactNode;
 }) {
-  const [state, formAction] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(action, INITIAL);
+  const ref = useRef<HTMLFormElement>(null);
+  // React clears a form after every action. We submit it ourselves so that a
+  // rejected form keeps what the merchant typed; it is cleared only on success.
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    startTransition(() => formAction(data));
+  }
+  useEffect(() => {
+    if (!pending && state !== INITIAL && !state.error && !state.needsMfa) ref.current?.reset();
+  }, [state, pending]);
   return (
-    <form action={formAction} className={cn('space-y-4', className)} noValidate={false}>
-      {children}
+    <form ref={ref} action={formAction} onSubmit={onSubmit} className={cn('space-y-4', className)} noValidate={false}>
+      <PendingContext.Provider value={pending}>{children}</PendingContext.Provider>
       {render?.(state)}
       {state.error ? (
         <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">

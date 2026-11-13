@@ -43,6 +43,8 @@ pnpm --filter @mtjari/e2e e2e           # Playwright; needs `pnpm build` first
 | `TRUST_PROXY_HOPS` | API | `1` behind nginx → web → API as configured here |
 | `SMTP_URL`, `MAIL_FROM`, `MAIL_TRANSPORT` | API | Production requires `smtp` |
 | `API_URL` | Web | Internal URL of the API |
+| `STORAGE_DRIVER`, `STORAGE_LOCAL_DIR`, `STORAGE_PUBLIC_URL` | API | `local` (default; files on the `media` volume, nginx proxies `/media/` to the API) or `s3`. `STORAGE_PUBLIC_URL` is the public base URL of images |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | API | Only with `STORAGE_DRIVER=s3`. Not yet tested against a real bucket |
 | `THROTTLE_LIMIT`, `AUTH_THROTTLE_LIMIT`, `LOGIN_MAX_FAILURES`, `LOGIN_LOCK_MINUTES`, `MAX_STORES_PER_USER` | API | Optional tuning |
 
 Secrets live in `.env.production` on the server (mode 600, owned by the deploy user) or in a secrets manager; never in git, images or logs.
@@ -70,7 +72,7 @@ Wildcard certificates cover `*.mtjari.cc` only. Custom domains need per-domain c
 
 - `infra/scripts/backup.sh`: nightly `pg_dump` (custom format), encrypted with `age`, optional upload to S3-compatible storage, 14-day local retention. Schedule with cron or a systemd timer.
 - Add WAL archiving (pgBackRest or WAL-G) before real merchant data exists, for point-in-time recovery.
-- Uploaded media (Phase 2) lives in object storage with bucket versioning.
+- Uploaded media: with `STORAGE_DRIVER=s3`, enable bucket versioning. With the local driver the `media` Docker volume is **not** covered by `backup.sh` (database only) and must be backed up separately, e.g. a nightly `tar` of the volume.
 - Restore drill (Phase 10): restore the latest dump into a scratch database, run migrations and the test suite against it, record the time taken. Target RPO ≤ 24 h with dumps alone, ≤ 5 min with WAL archiving; RTO ≤ 1 h.
 - Keep `ENCRYPTION_KEYS` backed up separately from database backups: without it, encrypted columns (MFA secrets, later payment credentials) cannot be read.
 

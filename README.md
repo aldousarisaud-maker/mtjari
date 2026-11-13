@@ -36,13 +36,13 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#1-local-development-verified). In sh
 ## Tests
 
 ```bash
-pnpm test                       # 102 tests: validation, RLS isolation, API unit + HTTP
-pnpm --filter @mtjari/e2e e2e   # 17 browser tests of the full journey
+pnpm test                       # 160 tests: validation, money, CSV, RLS isolation, API unit + HTTP
+pnpm --filter @mtjari/e2e e2e   # 27 browser tests of the full journey (desktop and mobile)
 ```
 
 All suites run against a real PostgreSQL database using the same restricted role as production; browser tests also use real SMTP delivery to a local sink.
 
-## API (Phase 1)
+## API (Phases 1–2)
 
 | Area | Endpoints |
 |---|---|
@@ -51,4 +51,6 @@ All suites run against a real PostgreSQL database using the same restricted role
 | Team | `GET /v1/stores/:storeId/members`, `PATCH/DELETE .../members/:id`, `POST .../leave`, `GET/POST .../invitations`, `DELETE .../invitations/:id`, `POST /v1/invitations/accept` |
 | Roles | `GET/POST /v1/stores/:storeId/roles`, `GET .../roles/permissions`, `PUT/DELETE .../roles/:id` |
 | Audit | `GET /v1/stores/:storeId/audit-logs` |
+| Catalogue | `GET/POST .../categories`, `PATCH/DELETE .../categories/:id`, same for `brands`; `GET/POST .../products`, `GET/PATCH/DELETE .../products/:id`, `PUT .../products/:id/variants`, `PUT .../products/:id/relations`, `POST .../products/:id/media`, `PATCH/DELETE .../products/:id/media/:mediaId`, `GET .../products/export`, `POST .../products/import`, `GET .../catalog/summary` |
+| Inventory | `GET .../inventory`, `POST .../inventory/adjust`, `GET .../inventory/movements` |
 | Ops | `GET /v1/health` |

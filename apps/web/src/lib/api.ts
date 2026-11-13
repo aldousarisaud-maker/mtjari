@@ -24,7 +24,7 @@ async function forwardHeaders(): Promise<Record<string, string>> {
 
 export async function api<T = unknown>(
   path: string,
-  opts: { method?: string; body?: unknown; auth?: boolean } = {},
+  opts: { method?: string; body?: unknown; form?: FormData; auth?: boolean } = {},
 ): Promise<ApiResult<T>> {
   const hdrs: Record<string, string> = { ...(await forwardHeaders()) };
   if (opts.body !== undefined) hdrs['content-type'] = 'application/json';
@@ -37,7 +37,8 @@ export async function api<T = unknown>(
     res = await fetch(`${API_URL}${path}`, {
       method: opts.method ?? 'GET',
       headers: hdrs,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      // `form` is sent as multipart (fetch sets the boundary header itself).
+      body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
       cache: 'no-store',
     });
   } catch {

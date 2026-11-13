@@ -115,6 +115,8 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, not 
 - [x] Tap: each store uses its own secret key (checked with Tap before it is stored); an order is paid only after the charge is read back from Tap with that key and is `CAPTURED` for our amount and currency. A forged notification or a made-up `tap_id` in the address cannot pay an order; one store's key cannot settle another store's charge.
 - [x] Shoppers are redirected only to `https` payment pages (the local test stand-in needs an explicit `ALLOW_LOCAL_PAYMENT_PAGE=1`, set only by the browser tests).
 - [x] MyFatoorah: same rule as Tap. An order is paid only after the invoice is read back with the store's own token and is `Paid` for our amount; notifications and return parameters are hints only; the account currency must equal the store currency.
+- [x] Hesabe: same rule. An order is paid only after the transaction is read back with the store's own access code and is `SUCCESSFUL` for our amount; the notification and the return `data` parameter are never trusted. All four keys are encrypted and never returned.
+- [ ] Hesabe has been exercised on its real sandbox for checkout creation and unpaid enquiry only; paid status, notifications and a wrong secret key are unverified.
 - [ ] MyFatoorah has been exercised on its real sandbox for invoice creation only; status reading and a completed payment are unverified.
 - [ ] Tap's notification `hashstring` has not been checked against a real notification (needs a public server). Decisions do not depend on it.
 - [ ] A completed Tap payment has not been observed end to end on the real sandbox.

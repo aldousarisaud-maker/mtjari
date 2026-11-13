@@ -1,5 +1,5 @@
 import { BadGatewayException, BadRequestException, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { createHmac, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomUUID } from 'node:crypto';
 import { PHONE_RULES, currencyDecimals, fromMinor, toMinor } from '@mtjari/shared';
 import { safeEqual } from '../common/crypto';
 import { ENV, type Env } from '../config/env';
@@ -403,6 +403,184 @@ export class MyFatoorahAdapter implements PaymentAdapter {
   }
 }
 
+/** Hesabe's documented AES-256-CBC format: key = the 32-character secret, iv = the 16-character IV key, ciphertext as lowercase hex. */
+export function hesabeEncrypt(text: string, secretKey: string, iv: string): string {
+  const c = createCipheriv('aes-256-cbc', Buffer.from(secretKey), Buffer.from(iv));
+  return Buffer.concat([c.update(text, 'utf8'), c.final()]).toString('hex');
+}
+/** Returns null for anything that is not valid hex ciphertext under these keys. Hesabe's own libraries pad to 32 bytes, so padding is removed by hand. */
+export function hesabeDecrypt(hex: string, secretKey: string, iv: string): string | null {
+  const clean = hex.trim();
+  if (!/^[0-9a-f]+$/i.test(clean) || clean.length % 32 !== 0) return null;
+  try {
+    const d = createDecipheriv('aes-256-cbc', Buffer.from(secretKey), Buffer.from(iv));
+    d.setAutoPadding(false);
+    const plain = Buffer.concat([d.update(Buffer.from(clean, 'hex')), d.final()]);
+    const pad = plain[plain.length - 1] ?? 0;
+    if (pad < 1 || pad > 32 || pad > plain.length) return null;
+    return plain.subarray(0, plain.length - pad).toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hesabe (https://developer.hesabe.com), redirect ("in-direct") flow:
+ *  1. The checkout request is AES-encrypted with the merchant's secret key and IV and posted to
+ *     /checkout with the merchant's access code. The encrypted answer holds `token` (the
+ *     transaction) and `response.data` (what the payment page needs).
+ *  2. The shopper is sent to /payment?data=..., pays, and is sent back to our responseUrl or
+ *     failureUrl; Hesabe may also post to webhookUrl.
+ *  3. Neither is trusted: the transaction is read back with GET /api/transaction/{token} using the
+ *     merchant's access code, and only `SUCCESSFUL` for our amount pays the order.
+ *
+ * A merchant needs four values from their Hesabe panel (merchant code, access code, secret key,
+ * IV key) and chooses sandbox or production. Hesabe accepts KWD here: the stores that can use it
+ * sell in KWD.
+ */
+export class HesabeAdapter implements PaymentAdapter {
+  static readonly URLS = { sandbox: 'https://sandbox.hesabe.com', production: 'https://api.hesabe.com' } as const;
+  readonly id = 'hesabe';
+  readonly kind = 'online' as const;
+  readonly name = { ar: 'حسابي (كي نت / بطاقة)', en: 'Hesabe (KNET / card)' };
+  readonly credentialFields: readonly CredentialField[] = [
+    { key: 'merchantCode', label: { ar: 'رمز التاجر (Merchant Code)', en: 'Merchant code' } },
+    { key: 'accessCode', label: { ar: 'رمز الوصول (Access Code)', en: 'Access code' } },
+    { key: 'secretKey', label: { ar: 'مفتاح التشفير (Secret Key)', en: 'Secret key' } },
+    { key: 'ivKey', label: { ar: 'مفتاح IV', en: 'IV key' } },
+    {
+      key: 'environment', label: { ar: 'البيئة', en: 'Environment' }, type: 'select',
+      options: [
+        { value: 'sandbox', label: { ar: 'تجريبية (Sandbox)', en: 'Sandbox (testing)' } },
+        { value: 'production', label: { ar: 'حقيقية (Production)', en: 'Production (real payments)' } },
+      ],
+    },
+  ];
+  private readonly logger = new Logger('Hesabe');
+  static readonly TRANSACTION_TOKEN = /^[0-9]{10,40}$/;
+  private static readonly FAILED = new Set(['FAILED', 'CANCELLED', 'CANCELED', 'DECLINED', 'ABANDONED', 'REJECTED', 'EXPIRED', 'TIMEOUT', 'TIMEDOUT']);
+
+  /** `overrideUrl` replaces both addresses; it is set only by the automated tests. */
+  constructor(private readonly overrideUrl?: string) {}
+
+  private keys(credentials: Record<string, string>) {
+    const c = {
+      merchantCode: credentials['merchantCode'] ?? '', accessCode: credentials['accessCode'] ?? '', secretKey: credentials['secretKey'] ?? '',
+      ivKey: credentials['ivKey'] ?? '', environment: credentials['environment'] ?? '',
+    };
+    const env = c.environment === 'sandbox' || c.environment === 'production' ? c.environment : null;
+    if (!env || !/^[0-9]{3,12}$/.test(c.merchantCode) || !/^[A-Za-z0-9-]{16,64}$/.test(c.accessCode)
+      || !/^[\x21-\x7e]{32}$/.test(c.secretKey) || !/^[\x21-\x7e]{16}$/.test(c.ivKey)) throw new BadRequestException('invalid_payment_credentials');
+    return { ...c, url: this.overrideUrl ?? HesabeAdapter.URLS[env] };
+  }
+
+  mode(credentials: Record<string, string>): 'test' | 'live' | null {
+    return credentials['environment'] === 'sandbox' ? 'test' : credentials['environment'] === 'production' ? 'live' : null;
+  }
+
+  private async http(method: 'GET' | 'POST', url: string, accessCode: string, form?: string): Promise<{ status: number; text: string }> {
+    try {
+      const res = await fetch(url, {
+        method, signal: AbortSignal.timeout(10_000),
+        headers: { accesscode: accessCode, accept: 'application/json', ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+        body: form,
+      });
+      return { status: res.status, text: await res.text() };
+    } catch (e) {
+      this.logger.warn(`Hesabe ${method} ${new URL(url).pathname.split('/').slice(0, 3).join('/')} unreachable: ${(e as Error).name}`);
+      throw new BadGatewayException('payment_provider_unreachable');
+    }
+  }
+
+  /** Encrypts the checkout request, posts it, decrypts the answer. A refusal comes back as `ok: false`. */
+  private async checkout(k: ReturnType<HesabeAdapter['keys']>, payload: Record<string, unknown>) {
+    const body = new URLSearchParams({ data: hesabeEncrypt(JSON.stringify(payload), k.secretKey, k.ivKey) }).toString();
+    const { status, text } = await this.http('POST', `${k.url}/checkout`, k.accessCode, body);
+    if (status >= 502) throw new BadGatewayException('payment_provider_unreachable');
+    const plain = status === 200 ? hesabeDecrypt(text, k.secretKey, k.ivKey) : null;
+    type Answer = { status?: unknown; token?: unknown; response?: { data?: unknown } };
+    const parse = (): Answer | null => {
+      try { return plain ? (JSON.parse(plain) as Answer) : null; } catch { return null; /* not JSON: treated as a refusal */ }
+    };
+    const answer = parse();
+    const token = answer?.token;
+    const data = answer?.response?.data;
+    const ok = answer?.status === true && typeof token === 'string' && HesabeAdapter.TRANSACTION_TOKEN.test(token) && typeof data === 'string' && /^[0-9a-zA-Z._~+/=-]{8,4000}$/.test(data);
+    return { ok, status, token: ok ? (token as string) : '', data: ok ? (data as string) : '' };
+  }
+
+  /**
+   * The only authenticated call that proves all four values at once is a checkout, which also
+   * proves the secret key and IV (a wrong pair cannot be decrypted by Hesabe). It creates one
+   * unpaid 1.000 KWD transaction in the merchant's Hesabe panel that nobody can pay.
+   */
+  async checkCredentials(credentials: Record<string, string>, store: { currency: string }) {
+    const k = this.keys(credentials);
+    if (store.currency !== 'KWD') throw new BadRequestException('payment_currency_mismatch');
+    const r = await this.checkout(k, {
+      merchantCode: k.merchantCode, amount: 1, paymentType: 0, currency: 'KWD', orderReferenceNumber: 'mtjari-key-check', version: '3.0',
+      responseUrl: 'https://mtjari.cc/key-check', failureUrl: 'https://mtjari.cc/key-check',
+    });
+    if (!r.ok) throw new BadRequestException('invalid_payment_credentials');
+    return { mode: this.mode(credentials)! };
+  }
+
+  async initiate(input: InitiateInput) {
+    const k = this.keys(input.credentials);
+    if (input.currency !== 'KWD') throw new BadGatewayException('payment_provider_error');
+    const rule = PHONE_RULES[input.customer.country];
+    const digits = input.customer.phone.replace(/\D/g, '');
+    const mobile = rule?.dial === '965' && digits.startsWith('965') && digits.length === 11 ? digits.slice(3) : null;
+    const r = await this.checkout(k, {
+      merchantCode: k.merchantCode,
+      amount: Number(fromMinor(input.amount, 'KWD')),
+      paymentType: 0,
+      currency: 'KWD',
+      orderReferenceNumber: input.orderId,
+      version: '3.0',
+      responseUrl: input.returnUrl,
+      failureUrl: input.returnUrl,
+      name: input.customer.name.slice(0, 100),
+      ...(mobile ? { mobile_number: mobile } : {}),
+      ...(input.customer.email ? { email: input.customer.email } : {}),
+      variable1: String(input.orderNumber),
+      // Hesabe's examples use https webhook addresses.
+      ...(input.webhookUrl?.startsWith('https://') ? { webhookUrl: input.webhookUrl } : {}),
+    });
+    if (r.status === 401 || r.status === 403) throw new BadGatewayException('payment_provider_rejected_credentials');
+    if (!r.ok) {
+      this.logger.warn(`Hesabe refused checkout for order ${input.orderId}: HTTP ${r.status}`);
+      throw new BadGatewayException('payment_provider_error');
+    }
+    return { providerRef: r.token, redirectUrl: `${k.url}/payment?data=${encodeURIComponent(r.data)}` };
+  }
+
+  async fetchStatus(input: { providerRef: string; credentials: Record<string, string> }): Promise<VerifiedWebhook> {
+    if (!HesabeAdapter.TRANSACTION_TOKEN.test(input.providerRef)) throw new BadRequestException('invalid_payment_reference');
+    const k = this.keys(input.credentials);
+    const { status, text } = await this.http('GET', `${k.url}/api/transaction/${input.providerRef}`, k.accessCode);
+    // Hesabe answers 404 "Transaction not found" for a checkout that nobody has paid or tried to pay yet.
+    if (status === 404) return { eventId: `${input.providerRef}:UNPAID`, type: 'transaction.unpaid', providerRef: input.providerRef, outcome: 'ignored' };
+    let body: { status?: unknown; data?: { token?: unknown; status?: unknown; amount?: unknown } | null } = {};
+    try { body = JSON.parse(text) as typeof body; } catch { /* handled below */ }
+    const d = body.data;
+    if (status >= 300 || body.status !== true || !d || d.token !== input.providerRef || typeof d.status !== 'string') throw new BadGatewayException('payment_provider_error');
+    const state = d.status.toUpperCase();
+    const outcome = state === 'SUCCESSFUL' ? 'paid' : HesabeAdapter.FAILED.has(state) ? 'failed' : 'ignored';
+    const amount = typeof d.amount === 'string' || typeof d.amount === 'number' ? toMinor(String(d.amount), 'KWD') : null;
+    return { eventId: `${input.providerRef}:${state}`, type: `transaction.${state.toLowerCase()}`, providerRef: input.providerRef, outcome, amount: amount ?? undefined, currency: 'KWD' };
+  }
+
+  /** The notification only names the transaction (`token`); the answer comes from Hesabe's enquiry API. */
+  async verifyWebhook(input: { rawBody: Buffer; headers: Record<string, string | string[] | undefined>; credentials: Record<string, string> }) {
+    let body: { token?: unknown };
+    try { body = JSON.parse(input.rawBody.toString('utf8')) as typeof body; } catch { throw new UnauthorizedException('invalid_payload'); }
+    const token = typeof body?.token === 'string' ? body.token : '';
+    if (!HesabeAdapter.TRANSACTION_TOKEN.test(token)) throw new UnauthorizedException('invalid_payload');
+    return this.fetchStatus({ providerRef: token, credentials: input.credentials });
+  }
+}
+
 @Injectable()
 export class PaymentRegistry {
   private readonly adapters = new Map<string, PaymentAdapter>();
@@ -411,6 +589,7 @@ export class PaymentRegistry {
     this.add(new CashOnDeliveryAdapter());
     this.add(new TapAdapter(env.TAP_API_URL.replace(/\/+$/, '')));
     this.add(new MyFatoorahAdapter(env.MYFATOORAH_API_URL?.replace(/\/+$/, '')));
+    this.add(new HesabeAdapter(env.HESABE_API_URL?.replace(/\/+$/, '')));
     if (env.NODE_ENV === 'test') this.add(new TestGatewayAdapter());
   }
 

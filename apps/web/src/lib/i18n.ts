@@ -402,6 +402,9 @@ const ar = {
   'd.modeHint.myfatoorah.live': 'حساب حقيقي: المدفوعات حقيقية وتذهب إلى حسابك في ماي فاتورة.',
   'd.choose': 'اختر',
   'err.payment_currency_mismatch': 'عملة حساب بوابة الدفع الذي اخترته تختلف عن عملة المتجر. اختر البلد الصحيح للحساب.',
+  'd.help.hesabe': 'من لوحة تحكم حسابي (Hesabe) خذ رمز التاجر ورمز الوصول ومفتاح التشفير ومفتاح IV، وابدأ بالبيئة التجريبية. المتجر يجب أن يكون بالدينار الكويتي. عند الحفظ نجري طلب دفع تجريبي بمبلغ 1.000 د.ك للتحقق من المفاتيح، وسيظهر في لوحتك كعملية غير مدفوعة ولا يمكن لأحد دفعها. المفاتيح لا تُعرض بعد حفظها.',
+  'd.modeHint.hesabe.test': 'البيئة التجريبية: لا تُخصم مبالغ حقيقية من العملاء.',
+  'd.modeHint.hesabe.live': 'بيئة حقيقية: المدفوعات حقيقية وتذهب إلى حسابك في حسابي.',
 } as const;
 
 export type Key = keyof typeof ar;
@@ -804,6 +807,9 @@ const en: Record<Key, string> = {
   'd.modeHint.myfatoorah.live': 'A real account: payments are real and go to your MyFatoorah account.',
   'd.choose': 'Choose',
   'err.payment_currency_mismatch': 'The currency of the selected payment account is not the store currency. Choose the right account country.',
+  'd.help.hesabe': 'From your Hesabe dashboard take the merchant code, access code, secret key and IV key, and start with the sandbox environment. The store must sell in KWD. When you save, we create one 1.000 KWD checkout to verify the keys; it appears in your panel as an unpaid transaction that nobody can pay. The keys are never shown again.',
+  'd.modeHint.hesabe.test': 'Sandbox environment: shoppers are not charged real money.',
+  'd.modeHint.hesabe.live': 'Production environment: payments are real and go to your Hesabe account.',
 };
 
 const dict: Record<Locale, Record<Key, string>> = { ar, en };

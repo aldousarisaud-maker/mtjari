@@ -1,6 +1,6 @@
 # Mtjari.cc — Payment Integrations
 
-Status: **Cash on Delivery, Tap Payments and MyFatoorah are built.** Tap and MyFatoorah were built from their official documentation and only partly checked on their real sandboxes (see their sections below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
+Status: **Cash on Delivery, Tap Payments, MyFatoorah and Hesabe are built.** Tap and MyFatoorah were built from their official documentation and only partly checked on their real sandboxes (see their sections below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
 
 ## Principles
 
@@ -69,6 +69,19 @@ Source: https://docs.myfatoorah.com (API Key, SendPayment, GetPaymentStatus, Web
 
 Limits: MyFatoorah does not allow `localhost` return addresses and needs https for webhooks, so this can only be tried end to end on a real server. Verified on the real sandbox: one `SendPayment` call. Everything else follows the documentation and is unverified.
 
+## Hesabe (built)
+
+Source: https://developer.hesabe.com (checkout, transaction enquiry, encryption pages, read 2026-11-13).
+
+| Step | What happens |
+|---|---|
+| Merchant setup | Enters merchant code, access code, secret key (32 characters), IV (16 characters) and environment (`sandbox.hesabe.com` or `api.hesabe.com`). All encrypted at rest, never returned. Saving runs one 1.000 KWD test checkout. |
+| Checkout | The JSON payload is AES-256-CBC encrypted (hex) and posted to `/checkout` with the `accesscode` header. The answer holds the transaction `token` and the data for `/payment?data=…`, where the shopper is sent. KWD only. |
+| Shopper returns | Hesabe adds an encrypted `data` parameter. We do not read it: the API reads the transactions **it created for this order** with `GET /api/transaction/{token}`. 404 means unpaid. |
+| Notification | Only `token` is taken from the body, then the enquiry call decides. |
+
+Not verified: see IMPLEMENTATION_PLAN.md (Hesabe).
+
 ## Gateway manager features → where they live
 
 | Feature | Implementation |
@@ -91,7 +104,7 @@ Columns: what the provider is, what Mtjari needs from each merchant, and open qu
 |---|---|---|---|---|
 | **Tap Payments** | Gateway/PSP | KW, SA, AE, BH, QA, OM | Tap business account, secret + publishable keys (test and live) | Current API version, webhook hash scheme, KNET/mada/Apple Pay enablement per account, marketplace vs direct |
 | **MyFatoorah** (built) | Gateway/PSP | KW, SA, AE, BH, QA, OM | MyFatoorah account, API token per country portal | Real `GetPaymentStatus` response, wrong-token status code, refund API |
-| **Hesabe** | Gateway | KW | Merchant code, access code, secret key, IV | Encryption scheme of requests/responses, refund API availability, supported currencies |
+| **Hesabe** (built) | Gateway | KW | Merchant code, access code, secret key, IV | Paid-transaction enquiry shape, notification body, wrong-secret answer, refund API |
 | **Tabby** | BNPL | SA, AE, KW (confirm others) | Tabby merchant account, public + secret keys, merchant code per currency | Country/currency list, pre-scoring call, capture/close/refund flow, webhook auth header |
 | **Tamara** | BNPL | SA, AE, KW (confirm others) | Tamara merchant account, API token, notification token | Order authorise/capture steps, webhook JWT verification, min/max amounts |
 | **Deema** | BNPL | KW (confirm others) | Deema merchant account and API key | Whether a public API is open to all merchants, webhook format, refund support |

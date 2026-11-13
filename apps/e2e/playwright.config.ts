@@ -30,6 +30,8 @@ export default defineConfig({
     { command: 'node fake-tap.mjs', url: 'http://127.0.0.1:2527/health', reuseExistingServer: false },
     // Test-only stand-in for MyFatoorah (see fake-myfatoorah.mjs).
     { command: 'node fake-myfatoorah.mjs', url: 'http://127.0.0.1:2528/health', reuseExistingServer: false },
+    // Test-only stand-in for Hesabe (see fake-hesabe.mjs).
+    { command: 'node fake-hesabe.mjs', url: 'http://127.0.0.1:2529/health', reuseExistingServer: false },
     {
       command: 'node ../api/dist/main.js',
       url: `http://127.0.0.1:${API_PORT}/v1/health`,
@@ -53,6 +55,7 @@ export default defineConfig({
         CHECKOUT_THROTTLE_LIMIT: '100000',
         TAP_API_URL: 'http://127.0.0.1:2527',
         MYFATOORAH_API_URL: 'http://127.0.0.1:2528',
+        HESABE_API_URL: 'http://127.0.0.1:2529',
         API_PUBLIC_URL: `http://127.0.0.1:${API_PORT}`,
         // Uploaded images go to a throw-away folder and are served by the API.
         STORAGE_DRIVER: 'local',

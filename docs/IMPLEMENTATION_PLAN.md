@@ -131,7 +131,7 @@ Mutation checks: removing the webhook amount check, the webhook signature check,
 - Address forms for countries other than Kuwait (phone rules exist for the six GCC countries; the address form is Kuwait-shaped).
 - Per-zone area lists, COD fee, COD limits per zone.
 
-## Phase 5 — Payment providers (in progress: Tap and MyFatoorah built, others not started)
+## Phase 5 — Payment providers (in progress: Tap, MyFatoorah and Hesabe built, others not started)
 
 **Tap Payments: built.** Each merchant pastes their own Tap secret key in Dashboard → Delivery and payment; nothing is shared between stores and the platform holds no Tap account.
 
@@ -159,9 +159,17 @@ How it was verified, honestly:
 - **Real MyFatoorah sandbox, by hand on 2026-11-13**, with the public test token printed in MyFatoorah's documentation: one `SendPayment` call with the same fields the adapter sends created an invoice and returned its page address. Nothing else was checked on the real sandbox.
 - **Not verified with real MyFatoorah:** the token check call (`InitiatePayment`) and the HTTP status for a wrong token, `GetPaymentStatus` on a real invoice (the response shape is taken from the documentation), a completed payment, the redirect back, notifications, any live country account. Jordan and Egypt accounts are not offered (JOD and EGP are not store currencies yet).
 
-**Next providers** (not started): Hesabe, Tabby, Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+**Hesabe: built.** Each merchant enters their own four values (merchant code, access code, secret key, IV key) and chooses sandbox or production; nothing is shared between merchants and all four are stored encrypted and never shown again.
+- Requests and answers are AES-256-CBC, hex encoded, with the merchant's secret key and IV (`POST /checkout` with an `accesscode` header). Checkout sends the server-computed total in KWD; Hesabe is KWD only, so a store in another currency is refused with `payment_currency_mismatch`.
+- Saving the keys runs one real checkout of 1.000 KWD with reference `mtjari-key-check`. That is the only call that proves all four values together. It leaves one unpaid transaction in the merchant's Hesabe panel that nobody can pay (the dashboard says so).
+- An order is paid only after the API reads the transaction back (`GET /api/transaction/{token}` with the merchant's access code) and it is `SUCCESSFUL` for the same amount, using only tokens we created for that order. Hesabe answers 404 for an unpaid transaction, which we treat as "not yet". The notification body and the `data` return parameter are only hints; we read only the transaction token from the notification and never decrypt the return parameter.
+- **Automated tests** (14 API tests, 3 browser tests) run against a local stand-in (`apps/e2e/fake-hesabe.mjs`) built from Hesabe's documentation. Mutation checks (treat any status as paid; trust the notification body) make the tests fail.
+- **Real Hesabe sandbox, by hand on 2026-11-13**, with the public keys in Hesabe's documentation: the AES format, a checkout creation, an unpaid transaction enquiry giving 404, and a wrong access code giving 401. A probe with a wrong secret key was blocked by the tooling and was not run.
+- **Not verified with real Hesabe:** the enquiry answer for a paid or failed transaction (shape and status words are from the documentation), the notification body, the return parameters, what Hesabe answers to a wrong secret key, production, refunds. The failed-status word list is a guess to be confirmed.
 
-Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/api` 200, Playwright 63.
+**Next providers** (not started): Tabby, Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+
+Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/api` 214 (after Hesabe), Playwright 66.
 
 ## Phase 6 — Remaining 20 templates and visual builder
 Section-based editor with drag and drop, device previews, colour and typography editors, header/footer builders, undo/redo, version history, sanitised custom CSS.

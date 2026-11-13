@@ -187,7 +187,9 @@ test('the order link is private to its shop and unguessable', async ({ page, bro
   // A stranger with no cookies can open it only with the full token.
   const stranger = await (await browser.newContext()).newPage();
   expect((await stranger.goto(orderUrl))?.status()).toBe(200);
-  expect((await stranger.goto(shopUrl(SLUG, `/ar/orders/${token.slice(0, -1)}A`)))?.status()).toBe(404);
+  // Change one character in the middle (the last character of a token carries only 4 bits, so swapping it is not always a change).
+  const wrong = `${token.slice(0, 20)}${token[20] === 'A' ? 'B' : 'A'}${token.slice(21)}`;
+  expect((await stranger.goto(shopUrl(SLUG, `/ar/orders/${wrong}`)))?.status()).toBe(404);
   expect((await stranger.goto(shopUrl(SLUG, '/ar/orders/1001')))?.status()).toBe(404);
   await stranger.close();
   expect((await shopGet(page, shopUrl(SLUG, '/robots.txt'))).text()).resolves.toContain('Disallow: /ar/orders/');

@@ -34,7 +34,7 @@ Rule: a phase is finished only when its automated tests pass. The next phase doe
 | `apps/api` HTTP | 53 | Auth flows, token theft detection, rate limits, cross-tenant attacks, RBAC, audit trail |
 | `apps/e2e` (Playwright) | 17 | Full journey in a browser, RTL/LTR, httpOnly cookies, token refresh, staff restrictions, responsive layout |
 
-Not done in Phase 1 (deliberately): wizard steps that depend on later phases (template choice, products, payments, delivery, launch), custom-domain verification and SSL issuance (table and statuses exist; the flow lands with the storefront in Phase 3), Redis/BullMQ (added when the first queue is needed in Phase 4), deployment to a real server.
+Not done in Phase 1 (deliberately): wizard steps that depend on later phases (template choice, products, payments, delivery, launch), custom-domain verification and SSL issuance (table and statuses exist; the flow lands with the storefront in Phase 3), Redis/BullMQ (added when the first queue is needed; now Phase 5), deployment to a real server.
 
 ## Phase 2 — what exists
 
@@ -96,8 +96,40 @@ Tests after Phase 3:
 - Cleanup job for expired carts (with the background worker in Phase 4).
 - Old-slug 301 redirects and merchant-editable robots rules (Phase 7).
 
-## Phase 4 — Checkout, orders, payment framework
-Cart, guest checkout, country-specific address forms (Kuwait governorates/areas data), delivery zones/fees/slots/pickup, coupons, order state machine and timeline, PDF invoices, payment adapter interface, encrypted credential storage, webhook pipeline with idempotency, Cash on Delivery as the first adapter.
+## Phase 4 — what exists
+Status: **done and tested**.
+
+- **Delivery and pickup.** Delivery zones per store (Arabic/English name, fee, optional free-delivery threshold, on/off), one-click creation of the six Kuwait governorates, pickup with instructions in both languages, minimum order amount.
+- **Guest checkout** on every theme: name, phone (validated and normalised per country, Kuwait first), optional email, Kuwait address form (area, block, street, avenue, house, floor, flat, notes), delivery or pickup, payment method, order note. The checkout button appears only when the store has a usable payment method and a way to receive the order; otherwise the cart says so.
+- **Totals are computed on the server** from the catalogue and the zone; the request cannot carry prices, totals or a store id. Stock is taken inside the same transaction as the order (variants locked in a fixed order), the order number is per store (from 1001), and a repeated submit with the same key returns the same order instead of creating a second one.
+- **Private order page** (`/orders/{token}`): 43-character random token, only its hash stored, noindex, excluded in robots.txt, no referrer.
+- **Emails**: order confirmation to the shopper (when an email was given) and a new-order notice to the store owners.
+- **Dashboard → Orders**: list with status tabs and search (number, name, phone), order page with items, totals, customer and address, timeline, internal notes, and only the actions the state machine allows: `PENDING → CONFIRMED → PROCESSING → SHIPPED → DELIVERED`, cancel before delivery. Cancelling returns the stock. Every change is an append-only order event plus an audit-log row.
+- **Dashboard → Delivery and payment**: readiness card, payment methods, zones, order options. Permissions: `orders.read`, `orders.write`, `settings.manage`, `payments.manage`.
+- **Payment framework**: `PaymentAdapter` interface (offline/online), registry, per-store credentials encrypted with AES-256-GCM and bound to store and provider (write-only: never returned by the API), public webhook endpoint `POST /v1/webhooks/payments/:provider/:storeId` that verifies the signature on the raw body, records each provider event once, checks amount and currency against our payment record and only then marks the order paid. A database trigger refuses to mark an order paid without a paid payment row of the same amount.
+- **Cash on delivery** is the only payment method available in production. Staff record the cash on the order page; that is refused for online methods.
+- A `testpay` adapter exists **only when `NODE_ENV=test`**. It is a stand-in online gateway with signed webhooks, used to test the framework end to end. It is not registered in development or production and is not a real provider.
+
+Tests after Phase 4:
+
+| Suite | Count | New in Phase 4 |
+|---|---|---|
+| `packages/shared` | 49 | Checkout, address and phone validation, delivery fee rules, order state machine |
+| `packages/db` | 41 | RLS and cross-store foreign keys for the 8 new tables, total checks, append-only order events, paid-guard trigger |
+| `apps/api` | 168 | Checkout rules, server-side totals, stock and oversell, idempotent and simultaneous submits, order tokens, state machine, cancel returns stock, permissions, cross-store access refused, encrypted credentials, webhook signature / replay / amount mismatch |
+| `apps/e2e` (Playwright) | 56 | Merchant setup, shopper COD checkout with emails, private order link, merchant works the order to delivered and records cash, English pickup order cancelled with stock return, free delivery and minimum order, checkout and order pages in all five themes on desktop and mobile, dashboard order pages at phone width |
+
+Mutation checks: removing the webhook amount check, the webhook signature check, or the "manual payment only for offline methods" rule each makes API tests fail.
+
+**Planned for Phase 4 but not built** (nothing is faked in the UI):
+- Coupons and discounts (Phase 8 with marketing).
+- PDF invoices; delivery time slots.
+- Customer accounts and saved addresses: checkout is guest-only.
+- Redis/BullMQ and every background job: automatic cancellation of unpaid online orders, expired-cart cleanup, webhook processing through a queue (webhooks are processed inside the request today), page caching. These need Redis on a real server; they come with the first real gateway in Phase 5.
+- Stock reservations with expiry: stock is taken when the order is placed and returned on cancel.
+- Refunds and partial refunds (Phase 5, per provider). Order editing after placement.
+- Address forms for countries other than Kuwait (phone rules exist for the six GCC countries; the address form is Kuwait-shaped).
+- Per-zone area lists, COD fee, COD limits per zone.
 
 ## Phase 5 — Payment providers
 One adapter at a time behind the Phase 4 interface, each with sandbox tests and recorded webhook fixtures. Order to be agreed (suggested: Tap, MyFatoorah, Hesabe, Tabby, Tamara, Deema, Taly). See PAYMENT_INTEGRATIONS.md for what each one requires from you.

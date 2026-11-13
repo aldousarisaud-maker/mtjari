@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Boxes, FolderTree, Palette, KeyRound, LayoutDashboard, Package, ScrollText, Tags, Users } from 'lucide-react';
+import { ArrowRight, Boxes, FolderTree, Palette, ShoppingBag, Truck, KeyRound, LayoutDashboard, Package, ScrollText, Tags, Users } from 'lucide-react';
 import { PERMISSIONS } from '@mtjari/shared';
 import { Badge } from '@/components/ui';
 import { isLocale, statusLabel, t } from '@/lib/i18n';
@@ -13,11 +13,13 @@ export default async function StoreLayout({ children, params }: { children: Reac
   // Only sections the member is allowed to open are listed.
   const items = [
     { href: base, label: t(l, 'side.overview'), icon: LayoutDashboard, show: true },
+    { href: `${base}/orders`, label: t(l, 'side.orders'), icon: ShoppingBag, show: can(store, PERMISSIONS.ORDERS_READ) },
     { href: `${base}/products`, label: t(l, 'side.products'), icon: Package, show: can(store, PERMISSIONS.PRODUCTS_READ) },
     { href: `${base}/categories`, label: t(l, 'side.categories'), icon: FolderTree, show: can(store, PERMISSIONS.PRODUCTS_READ) },
     { href: `${base}/brands`, label: t(l, 'side.brands'), icon: Tags, show: can(store, PERMISSIONS.PRODUCTS_READ) },
     { href: `${base}/inventory`, label: t(l, 'side.inventory'), icon: Boxes, show: can(store, PERMISSIONS.INVENTORY_READ) },
     { href: `${base}/theme`, label: t(l, 'side.theme'), icon: Palette, show: can(store, PERMISSIONS.THEMES_MANAGE) },
+    { href: `${base}/delivery`, label: t(l, 'side.delivery'), icon: Truck, show: can(store, PERMISSIONS.SETTINGS_MANAGE) || can(store, PERMISSIONS.PAYMENTS_MANAGE) },
     { href: `${base}/team`, label: t(l, 'side.team'), icon: Users, show: can(store, PERMISSIONS.MEMBERS_READ) },
     { href: `${base}/roles`, label: t(l, 'side.roles'), icon: KeyRound, show: can(store, PERMISSIONS.ROLES_READ) },
     { href: `${base}/audit`, label: t(l, 'side.audit'), icon: ScrollText, show: can(store, PERMISSIONS.AUDIT_READ) },

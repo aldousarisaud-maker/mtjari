@@ -15,6 +15,10 @@ test.beforeAll(async ({ browser }, info) => {
   shop = await seedShop(page, `themes.${info.project.name}@example.com`, slug, 'متجر القوالب');
   await apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/theme/publish`, { themeId: 'gulf-premium' });
   await apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/launch`);
+  // Checkout is on: cash on delivery, one delivery zone and pickup.
+  await apiCall(shop.token, 'PUT', `/v1/stores/${shop.storeId}/payment-methods/cod`, { enabled: true });
+  await apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/delivery-zones`, { nameAr: 'حولي', nameEn: 'Hawalli', fee: 1500 });
+  await apiCall(shop.token, 'PUT', `/v1/stores/${shop.storeId}/checkout-settings`, { pickupEnabled: true });
   await page.close();
 });
 
@@ -56,8 +60,31 @@ for (const themeId of THEMES) {
     await page.goto(shopUrl(shop.slug, '/ar/cart'));
     await expect(page.getByTestId('cart-line')).toHaveCount(1);
     expect(await pageWidth(page)).toBeLessThanOrEqual(page.viewportSize()!.width);
-    await page.getByRole('button', { name: 'حذف' }).click();
-    await expect(page.getByText('سلتك فارغة')).toBeVisible();
+
+    // Checkout and the order page work and fit in this theme too.
+    const shot = async (name: string) => {
+      if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/${themeId}-${info.project.name}-ar_${name}.png`, fullPage: true });
+    };
+    await page.getByTestId('checkout-link').click();
+    await expect(page.locator('[data-theme]')).toHaveAttribute('data-theme', themeId);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('إتمام الطلب');
+    await page.getByLabel('منطقة التوصيل').selectOption({ label: 'حولي' });
+    await expect(page.getByTestId('summary-total')).toContainText('9.500');
+    await page.getByLabel('الاسم الكامل').fill('سارة أحمد');
+    await page.getByLabel('رقم الهاتف').fill('50001234');
+    await page.getByLabel('المنطقة', { exact: true }).fill('السالمية');
+    await page.getByLabel('القطعة').fill('10');
+    await page.getByLabel('الشارع').fill('شارع سالم المبارك');
+    await page.getByLabel('المنزل / المبنى').fill('15');
+    expect(await pageWidth(page), `${themeId} checkout width`).toBeLessThanOrEqual(page.viewportSize()!.width);
+    await shot('checkout');
+    await page.getByRole('button', { name: 'تأكيد الطلب' }).click();
+    await expect(page).toHaveURL(/\/ar\/orders\//);
+    await expect(page.locator('[data-theme]')).toHaveAttribute('data-theme', themeId);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('تم استلام طلبك');
+    await expect(page.getByTestId('order-total')).toContainText('9.500');
+    expect(await pageWidth(page), `${themeId} order width`).toBeLessThanOrEqual(page.viewportSize()!.width);
+    await shot('order');
 
     expect(errors, 'no script or console errors').toEqual([]);
   });

@@ -2,6 +2,7 @@
 
 import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { CART_COOKIE, shopApi } from './api';
 import { isSfLocale, sfError, st } from './i18n';
 import type { Cart, Locale } from './types';
@@ -41,4 +42,41 @@ export async function updateCartAction(_: CartActionState, f: FormData): Promise
   if (!res.ok) return { error: sfError(l, res.code === 'cart_item_not_found' ? 'generic' : res.code) };
   revalidatePath('/', 'layout');
   return {};
+}
+
+export interface CheckoutState { error?: string }
+
+/**
+ * Places the order. Only the shopper's choices are sent; the API computes
+ * prices, the delivery fee and the total itself from the cart cookie.
+ */
+export async function placeOrderAction(_: CheckoutState, f: FormData): Promise<CheckoutState> {
+  const l = locale(f);
+  const s = (k: string) => (f.get(k) ?? '').toString().trim();
+  const fulfillment = s('fulfillment') === 'PICKUP' ? 'PICKUP' : 'DELIVERY';
+  const body = {
+    fulfillment,
+    ...(fulfillment === 'DELIVERY'
+      ? {
+          zoneId: UUID.test(s('zoneId')) ? s('zoneId') : undefined,
+          address: { area: s('area'), block: s('block'), street: s('street'), avenue: s('avenue'), building: s('building'), floor: s('floor'), apartment: s('apartment'), directions: s('directions') },
+        }
+      : {}),
+    customer: { name: s('name'), phone: s('phone'), email: s('email') },
+    note: s('note'),
+    paymentProvider: s('paymentProvider'),
+    locale: l,
+    idempotencyKey: s('idempotencyKey'),
+  };
+  const res = await shopApi<{ orderNumber: number; token: string; redirectUrl: string | null }>(await currentHost(), '/checkout', { method: 'POST', body });
+  if (!res.ok) {
+    // Validation errors name the rule that failed (invalid_email, address_required...).
+    const issue = (res.data as { issues?: { message?: string }[] } | null)?.issues?.[0]?.message;
+    return { error: sfError(l, issue && /^[a-z_]+$/.test(issue) ? issue : res.code) };
+  }
+  (await cookies()).delete(CART_COOKIE);
+  revalidatePath('/', 'layout');
+  // An online provider's payment page (Phase 5) must be https; otherwise show the order.
+  const external = res.data.redirectUrl;
+  redirect(external && external.startsWith('https://') ? external : `/${l}/orders/${res.data.token}`);
 }

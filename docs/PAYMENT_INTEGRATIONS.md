@@ -1,6 +1,6 @@
 # Mtjari.cc — Payment Integrations
 
-Status: **design only**. No payment code exists yet (Phases 4–5). Provider details below are from general knowledge and have **not** been re-verified against each provider's current official documentation; that verification is the first task of each provider's integration and nothing here should be treated as a guarantee of availability, fees or API shape.
+Status: **framework built and tested (Phase 4); Cash on Delivery is the only working method.** No real gateway is integrated yet (Phase 5). Provider details below are from general knowledge and have **not** been re-verified against each provider's current official documentation; that verification is the first task of each provider's integration and nothing here should be treated as a guarantee of availability, fees or API shape.
 
 ## Principles
 
@@ -10,41 +10,43 @@ Status: **design only**. No payment code exists yet (Phases 4–5). Provider det
 4. Webhooks are verified, stored raw, deduplicated by provider event id, and processed idempotently through a queue.
 5. A gateway without valid credentials shows **Pending configuration**. A gateway whose integration is not built shows **Not available yet**. Nothing reports success without a real provider response.
 
-## Adapter contract (Phase 4)
+## Adapter contract (built in Phase 4)
+
+`apps/api/src/orders/payment-adapters.ts`:
 
 ```ts
 interface PaymentAdapter {
-  readonly code: string;                       // 'tap', 'myfatoorah', ...
-  readonly capabilities: {
-    refunds: 'full' | 'partial' | 'none';
-    flow: 'redirect' | 'hosted_fields' | 'offline';
-    currencies: string[];                      // verified list
-    countries: string[];                       // where merchants can be onboarded
-    methods: string[];                         // 'knet', 'mada', 'card', 'apple_pay', 'bnpl', ...
-  };
-  credentialSchema: ZodType;                   // drives the settings form and validation
-  testConnection(creds): Promise<Result>;      // cheap authenticated call
-  createPayment(input: { order, returnUrl, webhookUrl, idempotencyKey }): Promise<{ redirectUrl | clientToken, providerRef }>;
-  verifyWebhook(req: RawRequest, creds): VerifiedEvent | null;   // signature + timestamp
-  fetchStatus(providerRef, creds): Promise<PaymentStatus>;      // source of truth on doubt
-  refund?(providerRef, amount, idempotencyKey, creds): Promise<RefundResult>;
+  readonly id: string;                         // 'cod', later 'tap', 'myfatoorah', ...
+  readonly kind: 'offline' | 'online';
+  readonly name: { ar: string; en: string };
+  readonly credentialFields: readonly { key: string; label: { ar; en } }[];   // drives the settings form
+  initiate?(input: { orderId, amount, currency, credentials }): Promise<{ providerRef: string; redirectUrl: string | null }>;
+  verifyWebhook?(input: { rawBody: Buffer; headers; credentials }): VerifiedWebhook;   // throws on a bad signature
 }
 ```
 
-Shared services around the adapters: credential vault (AES-256-GCM, bound to store id, write-only from the UI), webhook endpoint `/v1/webhooks/payments/:endpointId` (opaque id per store and gateway), payment state machine (`PENDING → AUTHORIZED → CAPTURED → REFUNDED/PARTIALLY_REFUNDED`, `FAILED`, `EXPIRED`), transaction history, error log, reconciliation job, and per-store ordering and display names.
+What exists around it today:
+- **Credential vault**: AES-256-GCM, bound to store id and provider, write-only from the dashboard. A method with missing credentials shows **Pending configuration** and cannot be used at checkout.
+- **Webhook endpoint**: `POST /v1/webhooks/payments/:provider/:storeId`. The signature is verified on the raw request body with that store's own secret; each provider event id is recorded once per store (`webhook_events`), so replays do nothing; the amount and currency must equal our payment record; only then is the order marked paid.
+- **Database guard**: an order cannot become `PAID` without a `PAID` payment row of the same amount and currency.
+- **Payment states**: `PENDING`, `PAID`, `FAILED`, `CANCELLED`, `REFUNDED` (refund flow itself is not built).
+- **Offline methods**: staff record the payment on the order page; this is refused for online methods.
+- **Test gateway (`testpay`)**: registered only when `NODE_ENV=test`, to exercise the online path in automated tests. It is not a provider and never appears in development or production.
+
+Still to add in Phase 5, with the first real provider: `testConnection`, `fetchStatus` (server-to-server status check and reconciliation job), `refund`, sandbox/live modes, capability checks (currency/country), queue-based webhook processing, automatic cancellation of unpaid online orders, per-store ordering and display names.
 
 ## Gateway manager features → where they live
 
 | Feature | Implementation |
 |---|---|
-| Enable/disable, ordering, display name | `payment_gateway_configs` |
+| Enable/disable (built); ordering, display name (Phase 5) | `payment_methods` |
 | Merchant credentials | Encrypted JSON validated by the adapter's schema |
 | Sandbox / live | `mode` column; separate credentials per mode |
 | Webhook configuration | Generated URL and (where the provider supports it) signing secret shown once |
 | Test connection | `adapter.testConnection` |
 | Currency / country compatibility | Adapter capabilities checked against store currency and customer country at checkout |
 | Refunds | `adapter.refund` when supported, otherwise the button is absent |
-| Transaction history, error logs | `payments`, `payment_events` |
+| Transaction history, error logs | `payments`, `webhook_events` |
 | Reconciliation | Scheduled job: `fetchStatus` for stale pending payments, plus provider settlement reports where an API exists |
 
 ## Providers

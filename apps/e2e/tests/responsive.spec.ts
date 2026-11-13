@@ -31,7 +31,7 @@ test('dashboard catalogue pages fit the screen (Arabic and English)', async ({ p
   await expect(page).toHaveURL(/\/products\/[0-9a-f-]{36}$/);
   const product = new URL(page.url()).pathname;
 
-  for (const path of [store, `${store}/products`, `${store}/products/new`, product, `${store}/categories`, `${store}/brands`, `${store}/inventory`]) {
+  for (const path of [store, `${store}/products`, `${store}/products/new`, product, `${store}/categories`, `${store}/brands`, `${store}/inventory`, `${store}/orders`, `${store}/delivery`]) {
     for (const p of [path, path.replace('/ar/', '/en/')]) {
       await page.goto(p);
       await expect(page.locator('html')).toHaveAttribute('dir', p.startsWith('/ar/') ? 'rtl' : 'ltr');

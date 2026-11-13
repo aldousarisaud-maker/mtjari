@@ -165,7 +165,7 @@ test('product page: variants, stock rules, add to cart, cart totals', async ({ p
   await expect(lines.filter({ hasText: 'دهن العود' }).getByTestId('line-total')).toContainText('16.000');
   await expect(lines.filter({ hasText: 'دهن العود' })).toContainText('3ml');
   await expect(page.getByTestId('subtotal')).toContainText('28.500');
-  // Checkout does not exist yet: the page says so and offers no button that pretends otherwise.
+  // This shop has no payment method or delivery set up: the page says so and offers no button that pretends otherwise.
   await expect(page.getByTestId('checkout-note')).toContainText('غير مفعّلين');
   await expect(page.getByRole('button', { name: /الدفع|إتمام|checkout/i })).toHaveCount(0);
 

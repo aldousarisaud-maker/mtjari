@@ -45,6 +45,7 @@ pnpm --filter @mtjari/e2e e2e           # Playwright; needs `pnpm build` first
 | `API_URL` | Web | Internal URL of the API |
 | `ROOT_DOMAIN`, `PLATFORM_HOSTS` | Web | `ROOT_DOMAIN` must match the API's. Hosts other than `ROOT_DOMAIN`, `www.ROOT_DOMAIN` and the comma-separated `PLATFORM_HOSTS` are treated as shops |
 | `STOREFRONT_THROTTLE_LIMIT` | API | Public shop API requests per minute per IP (default 600) |
+| `CHECKOUT_THROTTLE_LIMIT` | API | Orders placed per minute per IP (default 20) |
 | `STORAGE_DRIVER`, `STORAGE_LOCAL_DIR`, `STORAGE_PUBLIC_URL` | API | `local` (default; files on the `media` volume, nginx proxies `/media/` to the API) or `s3`. `STORAGE_PUBLIC_URL` is the public base URL of images |
 | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` | API | Only with `STORAGE_DRIVER=s3`. Not yet tested against a real bucket |
 | `THROTTLE_LIMIT`, `AUTH_THROTTLE_LIMIT`, `LOGIN_MAX_FAILURES`, `LOGIN_LOCK_MINUTES`, `MAX_STORES_PER_USER` | API | Optional tuning |

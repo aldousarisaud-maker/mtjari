@@ -36,3 +36,18 @@ export interface CartLine {
   image: string | null; unitPrice: number; quantity: number; lineTotal: number; maxQuantity: number; issue: 'unavailable' | 'insufficient_stock' | null;
 }
 export interface Cart { currency: string; items: CartLine[]; itemCount: number; subtotal: number; checkoutAvailable: boolean }
+
+export interface CheckoutZone { id: string; nameAr: string; nameEn: string; fee: number; freeAbove: number | null }
+export interface CheckoutInfo {
+  cart: Cart; zones: CheckoutZone[]; pickup: { enabled: boolean; instructionsAr: string | null; instructionsEn: string | null };
+  minOrderAmount: number; country: string; paymentMethods: { provider: string; kind: 'offline' | 'online'; name: { ar: string; en: string } }[];
+  available: boolean; unavailableReason: 'store_not_live' | 'no_payment_method' | 'no_delivery_option' | null;
+}
+export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+export interface ShopOrder {
+  number: number; status: OrderStatus; paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED'; fulfillment: 'DELIVERY' | 'PICKUP'; currency: string;
+  subtotal: number; deliveryFee: number; total: number; customerName: string; customerPhone: string; customerNote: string | null; placedAt: string;
+  address: null | { area: string; block: string; street: string; avenue: string; building: string; floor: string; apartment: string; directions: string; zoneNameAr: string; zoneNameEn: string };
+  paymentName: { ar: string; en: string }; pickupInstructionsAr: string | null; pickupInstructionsEn: string | null;
+  items: { nameAr: string | null; nameEn: string | null; optionValues: Record<string, string>; unitPrice: number; quantity: number; lineTotal: number }[];
+}

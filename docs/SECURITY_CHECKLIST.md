@@ -102,7 +102,21 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, not 
 - [ ] Rate limiting per shopper IP depends on nginx setting `X-Forwarded-For`; not yet verified on a real server.
 - [ ] Cart cookies are per host, so a shop's subdomain and its custom domain have separate carts.
 
+## Checkout, orders and payments (Phase 4)
+- [x] Checkout accepts no prices, totals or store id from the client; totals are computed from the catalogue and the delivery zone inside the order transaction.
+- [x] Stock is taken in the same transaction as the order with row locks; two shoppers cannot both buy the last unit.
+- [x] Double submits are idempotent (same key returns the same order).
+- [x] Order page token is random (43 characters), stored hashed, scoped to the shop; pages are noindex with no referrer.
+- [x] Order status changes follow a fixed state machine on the server; order events are append-only; orders cannot be deleted by the application role.
+- [x] Payment credentials are encrypted (AES-256-GCM, bound to store and provider), never returned by the API, never logged.
+- [x] An order is marked paid only by a signature-verified webhook whose amount and currency match, or by staff for offline methods; a database trigger enforces a matching paid payment row.
+- [x] Webhook events are deduplicated per store and provider; replays change nothing.
+- [x] Checkout has its own per-IP rate limit (`CHECKOUT_THROTTLE_LIMIT`, default 20 per minute).
+- [ ] No real gateway has been integrated, so no provider's signature scheme has been verified yet (Phase 5).
+- [ ] No CAPTCHA or phone verification on guest checkout: a bot can place fake COD orders up to the rate limit, holding stock until the merchant cancels.
+- [ ] Unpaid online orders are not cancelled automatically (no background worker yet).
+
 ## Known limitations today
 - Images uploaded with the local storage driver live on one server's disk; use the S3 driver before running more than one API instance.
-- Rate-limit counters and the web tier's refresh single-flight are in process memory. Fine for one instance of each; both move to Redis before horizontal scaling (Phase 4, when Redis is introduced).
+- Rate-limit counters and the web tier's refresh single-flight are in process memory. Fine for one instance of each; both move to Redis before horizontal scaling (Phase 5, when Redis is introduced).
 - `MAIL_TRANSPORT=log` exists for local development and does not deliver mail; production startup rejects it.

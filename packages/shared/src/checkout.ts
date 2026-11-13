@@ -10,8 +10,8 @@ const amount = z.number().int().min(0).max(1_000_000_000);
 
 // ---- delivery -----------------------------------------------------------
 export const deliveryZoneSchema = z.strictObject({
-  nameAr: text(80).min(1, 'name_required'),
-  nameEn: text(80).min(1, 'name_required'),
+  nameAr: text(80).min(1, 'zone_name_required'),
+  nameEn: text(80).min(1, 'zone_name_required'),
   fee: amount,
   /** Subtotal from which delivery is free; null = never free. */
   freeAbove: amount.nullable().default(null),

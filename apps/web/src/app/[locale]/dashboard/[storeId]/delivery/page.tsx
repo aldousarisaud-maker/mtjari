@@ -10,7 +10,7 @@ import { RowAction } from '../row-action';
 
 interface Zone { id: string; nameAr: string; nameEn: string; fee: number; freeAbove: number | null; isActive: boolean }
 interface Settings { pickupEnabled: boolean; pickupInstructionsAr: string; pickupInstructionsEn: string; minOrderAmount: number }
-interface Method { provider: string; kind: 'offline' | 'online'; name: { ar: string; en: string }; credentialFields: { key: string; label: { ar: string; en: string } }[]; configured: boolean; enabled: boolean }
+interface Method { provider: string; kind: 'offline' | 'online'; name: { ar: string; en: string }; credentialFields: { key: string; label: { ar: string; en: string } }[]; configured: boolean; enabled: boolean; mode: 'test' | 'live' | null }
 
 export default async function DeliveryPage({ params }: { params: Promise<{ locale: string; storeId: string }> }) {
   const { locale, storeId } = await params;
@@ -63,8 +63,11 @@ export default async function DeliveryPage({ params }: { params: Promise<{ local
                   {m.enabled
                     ? <Badge className="bg-emerald-100 text-emerald-800">{t(l, 'd.enabled')}</Badge>
                     : m.configured ? <Badge className="bg-slate-200 text-slate-700">{t(l, 'd.disabled')}</Badge> : <Badge className="bg-amber-100 text-amber-800">{t(l, 'd.pending')}</Badge>}
+                  {m.mode ? <Badge className={m.mode === 'live' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} data-testid={`mode-${m.provider}`}>{t(l, `d.mode.${m.mode}`)}</Badge> : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">{t(l, `d.kind.${m.kind}`)}</p>
+                {m.mode ? <p className="mt-1 text-xs text-slate-500">{t(l, `d.modeHint.${m.mode}`)}</p> : null}
+                {m.provider === 'tap' && !m.enabled ? <p className="mt-2 text-sm text-slate-600">{t(l, 'd.help.tap')}</p> : null}
                 <ActionForm action={setPaymentMethodAction} className="mt-3 space-y-3">
                   <Hidden /><input type="hidden" name="provider" value={m.provider} /><input type="hidden" name="enabled" value={m.enabled ? 'false' : 'true'} />
                   {/* Secrets are write-only: the stored value is never sent to the browser. */}

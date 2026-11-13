@@ -9,7 +9,9 @@ import type { RequestMeta } from '../common/request-meta';
 import { ENV, type Env } from '../config/env';
 import { MailService } from '../mail/mail.service';
 import { OrderTokens } from '../orders/order-tokens';
+import type { InitiateInput, PaymentAdapter } from '../orders/payment-adapters';
 import { PaymentMethodsService } from '../orders/payment-methods.service';
+import { PaymentSettlement } from '../orders/payment-settlement';
 import { CartService } from './cart.service';
 import type { ShopContext } from './storefront.guard';
 
@@ -26,7 +28,8 @@ export class CheckoutService {
   constructor(
     private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly carts: CartService,
     private readonly inventory: InventoryService, private readonly methods: PaymentMethodsService,
-    private readonly tokens: OrderTokens, private readonly mail: MailService, @Inject(ENV) private readonly env: Env,
+    private readonly tokens: OrderTokens, private readonly mail: MailService, private readonly settlement: PaymentSettlement,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   private tx<T>(shop: ShopContext, fn: (tx: TxClient) => Promise<T>) {
@@ -153,7 +156,8 @@ export class CheckoutService {
         let providerRef: string | null = null;
         if (adapter.kind === 'online') {
           const credentials = (await this.methods.credentials(tx, shop.storeId, adapter.id)) ?? {};
-          ({ providerRef, redirectUrl } = await adapter.initiate!({ orderId: id, amount: total, currency: shop.store.currency, credentials }));
+          // If the provider refuses or cannot be reached, the whole order is rolled back: no stock is held for a payment that never started.
+          ({ providerRef, redirectUrl } = await adapter.initiate!(this.initiateInput(shop, adapter.id, { id, number, total, locale: input.locale, name: input.customer.name, phone, email: input.customer.email || null }, credentials)));
         }
         await tx.payment.create({ data: { storeId: shop.storeId, orderId: id, provider: adapter.id, amount: total, currency: shop.store.currency, providerRef } });
         await tx.cart.delete({ where: { id: cart.id } });
@@ -200,6 +204,19 @@ export class CheckoutService {
     return rows[0]!.number;
   }
 
+  private initiateInput(
+    shop: ShopContext, provider: string, order: { id: string; number: number; total: number; locale: string; name: string; phone: string; email: string | null }, credentials: Record<string, string>,
+  ): InitiateInput {
+    const locale = order.locale === 'en' ? 'en' : 'ar';
+    return {
+      orderId: order.id, orderNumber: order.number, amount: order.total, currency: shop.store.currency, locale, storeName: shop.store.name,
+      customer: { name: order.name, phone: order.phone, email: order.email, country: shop.store.country },
+      returnUrl: `${this.shopOrigin(shop.host)}/${locale}/orders/${this.tokens.for(order.id).token}`,
+      webhookUrl: this.env.API_PUBLIC_URL ? `${this.env.API_PUBLIC_URL.replace(/\/+$/, '')}/v1/webhooks/payments/${provider}/${shop.storeId}` : null,
+      credentials,
+    };
+  }
+
   /** Public origin of a shop host, following the scheme and port of the platform's own URL. */
   private shopOrigin(host: string): string {
     const web = new URL(this.env.WEB_URL);
@@ -215,17 +232,75 @@ export class CheckoutService {
         select: {
           number: true, status: true, paymentStatus: true, paymentProvider: true, fulfillment: true, currency: true, subtotal: true, deliveryFee: true, total: true,
           customerName: true, customerPhone: true, address: true, customerNote: true, placedAt: true,
+          payments: { orderBy: { createdAt: 'desc' }, take: 1, select: { status: true } },
           items: { orderBy: { id: 'asc' }, select: { nameAr: true, nameEn: true, optionValues: true, unitPrice: true, quantity: true, lineTotal: true } },
         },
       });
       if (!order) throw new NotFoundException('order_not_found');
       const [methods, settings] = await Promise.all([this.methods.usable(tx, shop.storeId), tx.checkoutSettings.findUnique({ where: { storeId: shop.storeId } })]);
-      const name = methods.find((m) => m.id === order.paymentProvider)?.name ?? { ar: order.paymentProvider, en: order.paymentProvider };
+      const adapter = methods.find((m) => m.id === order.paymentProvider);
+      const name = adapter?.name ?? { ar: order.paymentProvider, en: order.paymentProvider };
+      const { payments, ...rest } = order;
+      const online = adapter?.kind === 'online';
       return {
-        ...order, paymentName: name,
+        ...rest, paymentName: name,
+        // For online methods: whether the last attempt failed, and whether the shopper can (still) pay from this page.
+        paymentFailed: online && order.paymentStatus === 'UNPAID' && payments[0]?.status === 'FAILED',
+        canPay: online && !!adapter?.initiate && order.paymentStatus === 'UNPAID' && order.status === 'PENDING',
         pickupInstructionsAr: order.fulfillment === 'PICKUP' ? settings?.pickupInstructionsAr ?? null : null,
         pickupInstructionsEn: order.fulfillment === 'PICKUP' ? settings?.pickupInstructionsEn ?? null : null,
       };
+    });
+  }
+
+  private async onlineOrder(tx: TxClient, shop: ShopContext, token: string) {
+    if (!OrderTokens.FORMAT.test(token)) throw new NotFoundException('order_not_found');
+    const order = await tx.order.findFirst({
+      where: { storeId: shop.storeId, accessTokenHash: sha256(token) },
+      select: {
+        id: true, number: true, status: true, paymentStatus: true, paymentProvider: true, total: true, locale: true, customerName: true, customerPhone: true, customerEmail: true,
+        payments: { orderBy: { createdAt: 'desc' }, select: { id: true, status: true, providerRef: true } },
+      },
+    });
+    if (!order) throw new NotFoundException('order_not_found');
+    const adapter: PaymentAdapter | undefined = (await this.methods.usable(tx, shop.storeId)).find((m) => m.id === order.paymentProvider);
+    const credentials = adapter?.kind === 'online' ? await this.methods.credentials(tx, shop.storeId, adapter.id) : null;
+    return { order, adapter, credentials };
+  }
+
+  /**
+   * The shopper came back from the payment page (or reloaded the order page).
+   * What the browser says proves nothing: we ask the provider about a payment
+   * that belongs to this order and apply its answer like a webhook.
+   */
+  async syncPayment(shop: ShopContext, token: string, ref?: string) {
+    const { order, adapter, credentials } = await this.tx(shop, (tx) => this.onlineOrder(tx, shop, token));
+    if (order.paymentStatus !== 'UNPAID' || !adapter?.fetchStatus || !credentials) return { checked: false };
+    // Only references we created for this order are ever looked up.
+    const payment = order.payments.find((p) => p.providerRef && p.providerRef === ref) ?? order.payments.find((p) => p.providerRef);
+    if (!payment?.providerRef) return { checked: false };
+    const event = await adapter.fetchStatus({ providerRef: payment.providerRef, credentials });
+    await this.tx(shop, (tx) => this.settlement.apply(tx, shop.storeId, adapter.id, event, sha256(event.eventId)));
+    return { checked: true };
+  }
+
+  /** A new payment attempt for an unpaid online order (the first page was closed, or the payment failed). */
+  async retryPayment(shop: ShopContext, token: string) {
+    // The previous attempt may have succeeded without us hearing about it yet.
+    await this.syncPayment(shop, token).catch((e: Error) => this.logger.warn(`status check before retry failed: ${e.message}`));
+    return this.tx(shop, async (tx) => {
+      const { order, adapter, credentials } = await this.onlineOrder(tx, shop, token);
+      await tx.$queryRaw`SELECT id FROM orders WHERE store_id = ${shop.storeId}::uuid AND id = ${order.id}::uuid FOR UPDATE`;
+      const fresh = await tx.order.findUniqueOrThrow({ where: { id: order.id }, select: { status: true, paymentStatus: true } });
+      if (fresh.paymentStatus !== 'UNPAID' || fresh.status !== 'PENDING') throw new ConflictException('order_not_payable');
+      if (!adapter?.initiate || !credentials) throw new ConflictException('payment_method_unavailable');
+      if (order.payments.length >= 5) throw new ConflictException('too_many_payment_attempts');
+      const { providerRef, redirectUrl } = await adapter.initiate(this.initiateInput(
+        shop, adapter.id, { id: order.id, number: order.number, total: order.total, locale: order.locale, name: order.customerName, phone: order.customerPhone, email: order.customerEmail }, credentials,
+      ));
+      await tx.payment.create({ data: { storeId: shop.storeId, orderId: order.id, provider: adapter.id, amount: order.total, currency: shop.store.currency, providerRef } });
+      await tx.orderEvent.create({ data: { storeId: shop.storeId, orderId: order.id, type: 'payment_retry' } });
+      return { redirectUrl };
     });
   }
 }

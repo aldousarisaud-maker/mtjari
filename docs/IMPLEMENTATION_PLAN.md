@@ -131,8 +131,25 @@ Mutation checks: removing the webhook amount check, the webhook signature check,
 - Address forms for countries other than Kuwait (phone rules exist for the six GCC countries; the address form is Kuwait-shaped).
 - Per-zone area lists, COD fee, COD limits per zone.
 
-## Phase 5 — Payment providers
-One adapter at a time behind the Phase 4 interface, each with sandbox tests and recorded webhook fixtures. Order to be agreed (suggested: Tap, MyFatoorah, Hesabe, Tabby, Tamara, Deema, Taly). See PAYMENT_INTEGRATIONS.md for what each one requires from you.
+## Phase 5 — Payment providers (in progress: Tap built, others not started)
+
+**Tap Payments: built.** Each merchant pastes their own Tap secret key in Dashboard → Delivery and payment; nothing is shared between stores and the platform holds no Tap account.
+
+- The key must look like `sk_test_…` or `sk_live_…` and is checked with Tap before it is stored. A wrong key is refused; if Tap cannot be reached nothing is saved. The key is encrypted, never shown again, and the card shows **Test mode** or **Live mode**. Without a key the method stays **Pending configuration** and shoppers are not offered it.
+- Checkout creates a Tap charge (`POST /v2/charges`, `source.id = src_all`, so Tap's hosted page offers whatever the merchant's Tap account has enabled: KNET, cards, Apple Pay) for the server-computed total and sends the shopper to Tap. If Tap refuses or is down, no order is created and no stock is taken.
+- An order is marked paid only after the API reads the charge back from Tap with the merchant's key (`GET /v2/charges/{id}`) and the status is `CAPTURED` with our amount and currency. This happens when the shopper returns (`?tap_id=…` is only a hint) and when Tap's notification arrives; both go through the same settlement code, once.
+- Failed, declined, cancelled or abandoned payments leave the order unpaid. The order page says so and offers **Pay now / Try again** (at most 5 attempts per order). A second payment arriving for an already-paid order is recorded as a duplicate for the merchant to refund in Tap.
+
+How it was verified, honestly:
+- **Automated tests** (18 API tests, 4 browser tests) run against a local stand-in for Tap (`apps/e2e/fake-tap.mjs`) that copies Tap's documented request and response shapes. They prove our logic, not Tap's behaviour.
+- **Real Tap sandbox, by hand on 2026-11-13**, using the public test key printed in Tap's own documentation: a wrong key is answered with 401, a charge for 9.500 KWD with phone only was created and returned a `checkout.tap.company` payment page, and reading it back returned `INITIATED` with the same amount. `apps/api/scripts/tap-sandbox-check.cjs` repeats these checks through the adapter with any test key; it has **not** been run yet.
+- **Not verified with real Tap:** a completed payment (nobody has paid on Tap's page), the return redirect, Tap's notification call and its `hashstring` (it needs a public server; the hash is computed and logged but payment decisions do not depend on it), live keys, refunds.
+
+Not built: refunds from the dashboard, automatic cancellation of unpaid online orders (they stay pending and hold stock until the merchant cancels), reconciliation job, Redis/queue, choosing single methods (KNET only, card only), saved cards, Apple Pay domain setup.
+
+**Next providers** (not started): MyFatoorah, Hesabe, Tabby, Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+
+Tests after the Tap work: `packages/shared` 49, `packages/db` 41, `apps/api` 186, Playwright 60.
 
 ## Phase 6 — Remaining 20 templates and visual builder
 Section-based editor with drag and drop, device previews, colour and typography editors, header/footer builders, undo/redo, version history, sanitised custom CSS.

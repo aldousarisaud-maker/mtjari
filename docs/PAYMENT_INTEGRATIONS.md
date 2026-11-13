@@ -1,6 +1,6 @@
 # Mtjari.cc — Payment Integrations
 
-Status: **framework built and tested (Phase 4); Cash on Delivery is the only working method.** No real gateway is integrated yet (Phase 5). Provider details below are from general knowledge and have **not** been re-verified against each provider's current official documentation; that verification is the first task of each provider's integration and nothing here should be treated as a guarantee of availability, fees or API shape.
+Status: **Cash on Delivery and Tap Payments are built.** Tap was built from its official documentation and partly checked on its real sandbox (see "Tap Payments" below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
 
 ## Principles
 
@@ -20,8 +20,11 @@ interface PaymentAdapter {
   readonly kind: 'offline' | 'online';
   readonly name: { ar: string; en: string };
   readonly credentialFields: readonly { key: string; label: { ar; en } }[];   // drives the settings form
-  initiate?(input: { orderId, amount, currency, credentials }): Promise<{ providerRef: string; redirectUrl: string | null }>;
-  verifyWebhook?(input: { rawBody: Buffer; headers; credentials }): VerifiedWebhook;   // throws on a bad signature
+  initiate?(input: InitiateInput): Promise<{ providerRef: string; redirectUrl: string | null }>;   // order, amount, customer, returnUrl, webhookUrl
+  verifyWebhook?(input: { rawBody: Buffer; headers; credentials }): VerifiedWebhook | Promise<VerifiedWebhook>;   // throws when it cannot be trusted
+  fetchStatus?(input: { providerRef; credentials }): Promise<VerifiedWebhook>;   // the provider's own answer
+  checkCredentials?(credentials): Promise<{ mode: 'test' | 'live' }>;
+  mode?(credentials): 'test' | 'live' | null;
 }
 ```
 
@@ -33,7 +36,24 @@ What exists around it today:
 - **Offline methods**: staff record the payment on the order page; this is refused for online methods.
 - **Test gateway (`testpay`)**: registered only when `NODE_ENV=test`, to exercise the online path in automated tests. It is not a provider and never appears in development or production.
 
-Still to add in Phase 5, with the first real provider: `testConnection`, `fetchStatus` (server-to-server status check and reconciliation job), `refund`, sandbox/live modes, capability checks (currency/country), queue-based webhook processing, automatic cancellation of unpaid online orders, per-store ordering and display names.
+Added with Tap: `checkCredentials` (key check on save), `fetchStatus` (server-to-server status check), `mode` (test/live). Still to add: reconciliation job, `refund`, sandbox/live modes, capability checks (currency/country), queue-based webhook processing, automatic cancellation of unpaid online orders, per-store ordering and display names.
+
+## Tap Payments (built)
+
+Source: https://developers.tap.company (Create a Charge, Redirect, Webhook, API endpoint pages, read 2026-11-13).
+
+| Step | What happens |
+|---|---|
+| Merchant setup | Pastes the secret key from Tap dashboard → goSell → API Credentials. Format check, then an authenticated call to Tap; a 401 means the key is refused. Stored encrypted; test/live shown from the key prefix. |
+| Start payment | `POST {TAP_API_URL}/v2/charges` with `Authorization: Bearer <merchant key>`, header `lang_code`, amount in major units (3 decimals for KWD), `source.id = src_all`, `redirect.url` = the private order page, `post.url` = `{API_PUBLIC_URL}/v1/webhooks/payments/tap/{storeId}` when `API_PUBLIC_URL` is set. The shopper is sent to `transaction.url`. |
+| Shopper returns | Tap adds `?tap_id=chg_…`. The web app calls `POST /v1/storefront/orders/:token/sync-payment`; the API reads a charge **that it created for this order** from Tap and settles. |
+| Notification | Tap posts the charge to `post.url`. We take only the charge id from it, read the charge from Tap with the store's key, and settle. The documented `hashstring` (HMAC-SHA256 with the secret key) is computed and a mismatch is logged, but it is not what the decision rests on, because it could not be checked against a real notification yet. |
+| Paid | Only `CAPTURED` with the same amount and currency as our payment record. `ABANDONED, CANCELLED, FAILED, DECLINED, RESTRICTED, VOID, TIMEDOUT` mark the attempt failed; anything else is ignored. |
+| Retry | `POST /v1/storefront/orders/:token/pay` creates a new charge for an unpaid, pending order (5 attempts at most). |
+
+Environment: `TAP_API_URL` (default `https://api.tap.company`), `API_PUBLIC_URL` (public address of the API; without it Tap gets no notification address and payments are confirmed only when the shopper returns to the shop).
+
+Verified on the real sandbox: key rejection (401), charge creation, reading an unpaid charge. Not yet verified: a completed payment, the redirect back, the notification and its hash, live mode. To verify on a server: enter a Tap test key in a store, pay with a Tap test card, and watch the API log for `hashstring missing or different`.
 
 ## Gateway manager features → where they live
 

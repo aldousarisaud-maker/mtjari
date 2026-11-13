@@ -49,5 +49,7 @@ export interface ShopOrder {
   subtotal: number; deliveryFee: number; total: number; customerName: string; customerPhone: string; customerNote: string | null; placedAt: string;
   address: null | { area: string; block: string; street: string; avenue: string; building: string; floor: string; apartment: string; directions: string; zoneNameAr: string; zoneNameEn: string };
   paymentName: { ar: string; en: string }; pickupInstructionsAr: string | null; pickupInstructionsEn: string | null;
+  /** Online payment only: the last attempt failed / the shopper can pay from the order page. */
+  paymentFailed: boolean; canPay: boolean;
   items: { nameAr: string | null; nameEn: string | null; optionValues: Record<string, string>; unitPrice: number; quantity: number; lineTotal: number }[];
 }

@@ -2,7 +2,7 @@
 
 Multi-tenant e-commerce SaaS for Kuwait and the Gulf. Arabic-first (RTL) with English.
 
-**Status: Phases 1 to 4 of 10 complete** — accounts, stores (tenants) with strict database-level isolation, teams, roles, audit log, catalogue and inventory, storefront with five themes, guest checkout, orders, delivery zones and the payment framework with Cash on Delivery. Online payment gateways are not integrated yet (Phase 5); see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for what exists and what was left out.
+**Status: Phases 1 to 4 of 10 complete, Phase 5 in progress** — accounts, stores (tenants) with strict database-level isolation, teams, roles, audit log, catalogue and inventory, storefront with five themes, guest checkout, orders, delivery zones, Cash on Delivery, and online payment through Tap Payments with each merchant's own secret key. Tap is tested against a local stand-in and only partly against Tap's real sandbox; see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for what exists, what was verified and what was left out.
 
 ## Documents
 
@@ -36,8 +36,8 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#1-local-development-verified). In sh
 ## Tests
 
 ```bash
-pnpm test                       # 258 tests: validation, money, CSV, themes, checkout rules, RLS isolation, API unit + HTTP
-pnpm --filter @mtjari/e2e e2e   # 56 browser tests: dashboard, storefront and checkout journeys, all five themes (desktop and mobile)
+pnpm test                       # 276 tests: validation, money, CSV, themes, checkout rules, RLS isolation, API unit + HTTP
+pnpm --filter @mtjari/e2e e2e   # 60 browser tests: dashboard, storefront, checkout and online payment journeys, all five themes (desktop and mobile)
 ```
 
 All suites run against a real PostgreSQL database using the same restricted role as production; browser tests also use real SMTP delivery to a local sink.
@@ -54,7 +54,7 @@ All suites run against a real PostgreSQL database using the same restricted role
 | Catalogue | `GET/POST .../categories`, `PATCH/DELETE .../categories/:id`, same for `brands`; `GET/POST .../products`, `GET/PATCH/DELETE .../products/:id`, `PUT .../products/:id/variants`, `PUT .../products/:id/relations`, `POST .../products/:id/media`, `PATCH/DELETE .../products/:id/media/:mediaId`, `GET .../products/export`, `POST .../products/import`, `GET .../catalog/summary` |
 | Inventory | `GET .../inventory`, `POST .../inventory/adjust`, `GET .../inventory/movements` |
 | Theme and launch | `GET .../theme`, `POST .../theme/draft`, `POST .../theme/publish`, `POST .../theme/preview-token`, `POST .../launch`, `POST .../unlaunch` |
-| Storefront (public, by `x-store-host`) | `GET /v1/storefront/{store,products,products/:slug,sitemap,cart}`, `POST /v1/storefront/cart/items`, `PATCH /v1/storefront/cart/items/:id`, `GET/POST /v1/storefront/checkout`, `GET /v1/storefront/orders/:token` |
+| Storefront (public, by `x-store-host`) | `GET /v1/storefront/{store,products,products/:slug,sitemap,cart}`, `POST /v1/storefront/cart/items`, `PATCH /v1/storefront/cart/items/:id`, `GET/POST /v1/storefront/checkout`, `GET /v1/storefront/orders/:token`, `POST /v1/storefront/orders/:token/{sync-payment,pay}` |
 | Orders | `GET .../orders`, `GET .../orders/:id`, `POST .../orders/:id/{transition,record-payment,notes}` |
 | Delivery and payment settings | `GET/POST .../delivery-zones`, `POST .../delivery-zones/kuwait`, `PUT/DELETE .../delivery-zones/:id`, `GET/PUT .../checkout-settings`, `GET .../payment-methods`, `PUT .../payment-methods/:provider` |
 | Payment webhooks (public, signature-verified) | `POST /v1/webhooks/payments/:provider/:storeId` |

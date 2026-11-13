@@ -368,7 +368,7 @@ const ar = {
   'd.optionsSaved': 'تم حفظ الخيارات.',
   'd.saveOptions': 'حفظ الخيارات',
   'd.payments': 'طرق الدفع',
-  'd.paymentsHint': 'بوابات الدفع الإلكتروني تُضاف في المرحلة القادمة. المتاح الآن هو ما يظهر هنا فقط.',
+  'd.paymentsHint': 'كل متجر يستخدم حسابه الخاص لدى مزود الدفع. الطريقة التي لم تُدخل بياناتها تبقى «بانتظار الإعداد» ولا تظهر للعملاء.',
   'd.enabled': 'مفعّلة',
   'd.disabled': 'متوقفة',
   'd.enable': 'تفعيل',
@@ -388,6 +388,15 @@ const ar = {
   'err.payment_credentials_required': 'أدخل بيانات الربط المطلوبة أولاً.',
   'err.note_required': 'اكتب الملاحظة أولاً.',
   'err.zone_name_required': 'أدخل اسم المنطقة بالعربية والإنجليزية.',
+  'd.mode.test': 'وضع الاختبار',
+  'd.mode.live': 'وضع مباشر',
+  'd.modeHint.test': 'المفتاح المحفوظ مفتاح اختبار: لا تُخصم مبالغ حقيقية من العملاء.',
+  'd.modeHint.live': 'المفتاح المحفوظ مفتاح مباشر: المدفوعات حقيقية وتذهب إلى حسابك في Tap.',
+  'd.help.tap': 'من لوحة تحكم Tap: goSell ثم API Credentials، وانسخ المفتاح السري (يبدأ بـ sk_test_ للتجربة أو sk_live_ للمدفوعات الحقيقية). نتحقق من المفتاح مع Tap عند الحفظ، ولا يُعرض بعد حفظه.',
+  'err.payment_provider_unreachable': 'تعذّر الاتصال ببوابة الدفع للتحقق من المفتاح. لم يُحفظ شيء. حاول مرة أخرى بعد قليل.',
+  'o.e.duplicate_payment': 'وصل دفع مكرر لهذا الطلب. أعد المبلغ الزائد للعميل من لوحة تحكم مزود الدفع',
+  'o.e.payment_retry': 'بدأ العميل محاولة دفع جديدة',
+  'err.invalid_payment_credentials': 'المفتاح غير صحيح أو لم تقبله بوابة الدفع. تأكد أنك نسخت المفتاح السري كاملاً.',
 } as const;
 
 export type Key = keyof typeof ar;
@@ -756,7 +765,7 @@ const en: Record<Key, string> = {
   'd.optionsSaved': 'Options saved.',
   'd.saveOptions': 'Save options',
   'd.payments': 'Payment methods',
-  'd.paymentsHint': 'Online payment gateways arrive in the next phase. Only what is listed here is available now.',
+  'd.paymentsHint': 'Each store uses its own account with the payment provider. A method without credentials stays "Pending configuration" and is not offered to shoppers.',
   'd.enabled': 'On',
   'd.disabled': 'Off',
   'd.enable': 'Switch on',
@@ -776,6 +785,15 @@ const en: Record<Key, string> = {
   'err.payment_credentials_required': 'Enter the required credentials first.',
   'err.note_required': 'Write the note first.',
   'err.zone_name_required': 'Enter the zone name in Arabic and English.',
+  'd.mode.test': 'Test mode',
+  'd.mode.live': 'Live mode',
+  'd.modeHint.test': 'The saved key is a test key: shoppers are not charged real money.',
+  'd.modeHint.live': 'The saved key is a live key: payments are real and go to your Tap account.',
+  'd.help.tap': 'In your Tap dashboard: goSell, then API Credentials, and copy the secret key (it starts with sk_test_ for testing or sk_live_ for real payments). The key is checked with Tap when you save, and is never shown again.',
+  'err.payment_provider_unreachable': 'The payment gateway could not be reached to check the key. Nothing was saved. Try again shortly.',
+  'o.e.duplicate_payment': 'A duplicate payment arrived for this order. Refund the extra payment from the provider\'s dashboard',
+  'o.e.payment_retry': 'The customer started a new payment attempt',
+  'err.invalid_payment_credentials': 'The key is not valid or the payment gateway refused it. Make sure you copied the whole secret key.',
 };
 
 const dict: Record<Locale, Record<Key, string>> = { ar, en };

@@ -137,7 +137,7 @@ describe('payment methods and credentials', () => {
 
   it('lists the providers that exist, all off for a new store', async () => {
     const res = await t.http().get(`/v1/stores/${A}/payment-methods`).set(alice.auth).expect(200);
-    expect(res.body.map((m: { provider: string; enabled: boolean; kind: string }) => [m.provider, m.kind, m.enabled])).toEqual([['cod', 'offline', false], ['testpay', 'online', false]]);
+    expect(res.body.map((m: { provider: string; enabled: boolean; kind: string }) => [m.provider, m.kind, m.enabled])).toEqual([['cod', 'offline', false], ['tap', 'online', false], ['testpay', 'online', false]]);
   });
 
   it('cash on delivery needs no credentials', async () => {

@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { PHONE_RULES } from '@mtjari/shared';
 import { CartLineControls, CheckoutForm } from './client';
-import { pickText } from './i18n';
+import { payOrderAction } from './actions';
+import { pickText, sfError } from './i18n';
 import { Pager } from './components';
 import type { PageContext } from './context';
 import type { Cart, CheckoutInfo, ProductList, ShopCategory, ShopOrder } from './types';
@@ -158,7 +159,7 @@ export function CheckoutView({ pc, info, idempotencyKey }: { pc: PageContext; in
 }
 
 /** The page behind the shopper's private order link. */
-export function OrderView({ pc, order }: { pc: PageContext; order: ShopOrder }) {
+export function OrderView({ pc, order, token, payError }: { pc: PageContext; order: ShopOrder; token: string; payError?: string }) {
   const { ctx, theme } = pc;
   const { ui } = theme;
   const t = ctx.t;
@@ -167,9 +168,21 @@ export function OrderView({ pc, order }: { pc: PageContext; order: ShopOrder }) 
   const pickup = pickText(ctx.locale, order.pickupInstructionsAr, order.pickupInstructionsEn);
   return (
     <div className={ui.container}>
-      <h1 className={ui.h1}>{t('orderReceived')}</h1>
+      <h1 className={ui.h1}>{order.canPay ? t('orderAwaitingPayment') : t('orderReceived')}</h1>
       <p className="mt-3 text-lg">{t('orderNumber')}: <strong data-testid="order-number">{order.number}</strong></p>
-      {order.status === 'PENDING' ? <p className={`${ui.muted} mt-2`}>{t('orderThanks')}</p> : null}
+      {order.status === 'PENDING' && !order.canPay ? <p className={`${ui.muted} mt-2`}>{t('orderThanks')}</p> : null}
+      {order.paymentStatus === 'PAID' ? <p className={`${ui.success} mt-4`} role="status" data-testid="paid-note">{t('paymentReceived')}</p> : null}
+      {order.canPay ? (
+        <section className={`${ui.panel} mt-6 space-y-3`} aria-label={t('payment')} data-testid="pay-box">
+          {payError ? <p className={ui.error} role="alert">{sfError(ctx.locale, payError)}</p> : null}
+          <p className={order.paymentFailed ? ui.error : undefined} {...(order.paymentFailed ? { role: 'alert' } : {})}>{t(order.paymentFailed ? 'paymentFailedNote' : 'paymentPendingNote')}</p>
+          <form action={payOrderAction}>
+            <input type="hidden" name="token" value={token} />
+            <input type="hidden" name="locale" value={ctx.locale} />
+            <button type="submit" className={ui.button}>{t(order.paymentFailed ? 'payAgain' : 'payNow')} · {ctx.money(order.total)}</button>
+          </form>
+        </section>
+      ) : null}
       <div className="mt-8 grid items-start gap-8 lg:grid-cols-[1fr_22rem]">
         <section className={`${ui.panel} space-y-4`} aria-label={t('items')}>
           <ul className="divide-y divide-current/10">

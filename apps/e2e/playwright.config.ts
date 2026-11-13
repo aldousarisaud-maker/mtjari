@@ -26,6 +26,8 @@ export default defineConfig({
   ],
   webServer: [
     { command: 'node mail-sink.mjs', url: 'http://127.0.0.1:2526/health', reuseExistingServer: false },
+    // Test-only stand-in for Tap Payments (see fake-tap.mjs). The real Tap is never called from the test suite.
+    { command: 'node fake-tap.mjs', url: 'http://127.0.0.1:2527/health', reuseExistingServer: false },
     {
       command: 'node ../api/dist/main.js',
       url: `http://127.0.0.1:${API_PORT}/v1/health`,
@@ -47,6 +49,8 @@ export default defineConfig({
         AUTH_THROTTLE_LIMIT: '10000',
         STOREFRONT_THROTTLE_LIMIT: '100000',
         CHECKOUT_THROTTLE_LIMIT: '100000',
+        TAP_API_URL: 'http://127.0.0.1:2527',
+        API_PUBLIC_URL: `http://127.0.0.1:${API_PORT}`,
         // Uploaded images go to a throw-away folder and are served by the API.
         STORAGE_DRIVER: 'local',
         STORAGE_LOCAL_DIR: mkdtempSync(join(tmpdir(), 'mtjari-e2e-media-')),
@@ -57,7 +61,7 @@ export default defineConfig({
       command: `pnpm --filter @mtjari/web exec next start -p ${WEB_PORT}`,
       url: `http://localhost:${WEB_PORT}/ar`,
       reuseExistingServer: false,
-      env: { API_URL: `http://127.0.0.1:${API_PORT}`, ROOT_DOMAIN: 'localhost' },
+      env: { API_URL: `http://127.0.0.1:${API_PORT}`, ROOT_DOMAIN: 'localhost', ALLOW_LOCAL_PAYMENT_PAGE: '1' },
     },
   ],
 });

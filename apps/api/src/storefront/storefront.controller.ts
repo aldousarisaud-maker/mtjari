@@ -57,6 +57,17 @@ export class StorefrontController {
   @Get('orders/:token')
   order(@Shop() s: ShopContext, @Param('token') token: string) { return this.checkout.orderByToken(s, token); }
 
+  /** The shopper is back from the payment page: ask the provider what happened. `ref` is only a hint. */
+  @Throttle({ default: { limit: () => Number(process.env.CHECKOUT_THROTTLE_LIMIT) || 20, ttl: 60_000 } })
+  @Post('orders/:token/sync-payment') @HttpCode(200)
+  syncPayment(@Shop() s: ShopContext, @Param('token') token: string, @Query('ref') ref?: string) {
+    return this.checkout.syncPayment(s, token, typeof ref === 'string' ? ref.slice(0, 120) : undefined);
+  }
+
+  @Throttle({ default: { limit: () => Number(process.env.CHECKOUT_THROTTLE_LIMIT) || 20, ttl: 60_000 } })
+  @Post('orders/:token/pay') @HttpCode(200)
+  pay(@Shop() s: ShopContext, @Param('token') token: string) { return this.checkout.retryPayment(s, token); }
+
   @Post('cart/items') @HttpCode(200)
   add(@Shop() s: ShopContext, @Body(new ZodPipe(cartAddSchema)) body: { variantId: string; quantity: number }, @Headers('x-cart-token') token?: string) {
     return this.cart.add(s, token, body);

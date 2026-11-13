@@ -7,12 +7,13 @@ import { OrdersController, PaymentWebhooksController } from './orders.controller
 import { OrdersService } from './orders.service';
 import { PaymentRegistry } from './payment-adapters';
 import { PaymentMethodsService } from './payment-methods.service';
+import { PaymentSettlement } from './payment-settlement';
 import { WebhooksService } from './webhooks.service';
 
 @Module({
   imports: [AuditModule, CatalogModule],
   controllers: [OrdersController, PaymentWebhooksController],
-  providers: [PaymentRegistry, PaymentMethodsService, DeliveryService, OrdersService, WebhooksService, OrderTokens],
-  exports: [PaymentRegistry, PaymentMethodsService, OrderTokens, CatalogModule],
+  providers: [PaymentRegistry, PaymentMethodsService, DeliveryService, OrdersService, WebhooksService, PaymentSettlement, OrderTokens],
+  exports: [PaymentRegistry, PaymentMethodsService, PaymentSettlement, OrderTokens, CatalogModule],
 })
 export class OrdersModule {}

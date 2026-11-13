@@ -40,12 +40,15 @@ export class PaymentMethodsService {
     const rows = await this.prisma.tx({ storeId: t.storeId, userId: t.userId }, (tx) => tx.paymentMethod.findMany({ where: { storeId: t.storeId } }));
     return this.registry.all().map((a) => {
       const row = rows.find((r) => r.provider === a.id);
-      const configured = this.configured(a, this.decrypt(t.storeId, a.id, row?.credentialsEnc ?? null));
+      const creds = this.decrypt(t.storeId, a.id, row?.credentialsEnc ?? null);
+      const configured = this.configured(a, creds);
       return {
         provider: a.id, kind: a.kind, name: a.name,
         // Field names only. Stored values are never sent back.
         credentialFields: a.credentialFields.map((f) => ({ key: f.key, label: f.label })),
         configured, enabled: !!row?.enabled && configured,
+        // Whether the stored key is a test or a live one (online providers only); the key itself is not sent.
+        mode: configured ? a.mode?.(creds) ?? null : null,
       };
     });
   }
@@ -57,6 +60,8 @@ export class PaymentMethodsService {
       const allowed = new Set(adapter.credentialFields.map((f) => f.key));
       if (Object.keys(input.credentials).some((k) => !allowed.has(k))) throw new BadRequestException('unknown_credential_field');
     }
+    // New credentials are checked with the provider before they are stored, so a mistyped key is caught here and not at a shopper's checkout.
+    const checked = input.credentials && adapter.checkCredentials ? await adapter.checkCredentials(input.credentials) : null;
     return this.prisma.tx({ storeId: t.storeId, userId: t.userId }, async (tx) => {
       const existing = await tx.paymentMethod.findUnique({ where: { storeId_provider: { storeId: t.storeId, provider } } });
       const creds = { ...this.decrypt(t.storeId, provider, existing?.credentialsEnc ?? null), ...(input.credentials ?? {}) };
@@ -73,7 +78,7 @@ export class PaymentMethodsService {
         // Only the fact that credentials changed is recorded, never their content.
         metadata: { provider, credentialsChanged: !!input.credentials }, meta,
       });
-      return { provider, enabled: input.enabled, configured: this.configured(adapter, creds) };
+      return { provider, enabled: input.enabled, configured: this.configured(adapter, creds), mode: checked?.mode ?? adapter.mode?.(creds) ?? null };
     });
   }
 

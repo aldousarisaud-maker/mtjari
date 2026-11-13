@@ -76,7 +76,26 @@ export async function placeOrderAction(_: CheckoutState, f: FormData): Promise<C
   }
   (await cookies()).delete(CART_COOKIE);
   revalidatePath('/', 'layout');
-  // An online provider's payment page (Phase 5) must be https; otherwise show the order.
-  const external = res.data.redirectUrl;
-  redirect(external && external.startsWith('https://') ? external : `/${l}/orders/${res.data.token}`);
+  // Online payment: on to the provider's page. Otherwise show the order.
+  redirect(paymentPage(res.data.redirectUrl) ?? `/${l}/orders/${res.data.token}`);
+}
+
+/**
+ * A provider's payment page must be https. The only exception is the local
+ * stand-in used by the browser tests, switched on explicitly.
+ */
+function paymentPage(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('https://')) return url;
+  return process.env.ALLOW_LOCAL_PAYMENT_PAGE === '1' && url.startsWith('http://127.0.0.1:') ? url : null;
+}
+
+/** "Pay now" on the order page: a new payment attempt for an unpaid online order. */
+export async function payOrderAction(f: FormData): Promise<void> {
+  const l = isSfLocale(f.get('locale')?.toString()) ? (f.get('locale') as 'ar' | 'en') : 'ar';
+  const token = (f.get('token') ?? '').toString();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) redirect(`/${l}`);
+  const res = await shopApi<{ redirectUrl: string | null }>(await currentHost(), `/orders/${token}/pay`, { method: 'POST' });
+  const page = res.ok ? paymentPage(res.data.redirectUrl) : null;
+  redirect(page ?? `/${l}/orders/${token}?pay_error=${res.ok ? 'payment_provider_error' : encodeURIComponent(res.code ?? 'generic')}`);
 }

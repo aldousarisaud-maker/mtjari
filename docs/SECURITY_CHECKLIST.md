@@ -112,7 +112,10 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, not 
 - [x] An order is marked paid only by a signature-verified webhook whose amount and currency match, or by staff for offline methods; a database trigger enforces a matching paid payment row.
 - [x] Webhook events are deduplicated per store and provider; replays change nothing.
 - [x] Checkout has its own per-IP rate limit (`CHECKOUT_THROTTLE_LIMIT`, default 20 per minute).
-- [ ] No real gateway has been integrated, so no provider's signature scheme has been verified yet (Phase 5).
+- [x] Tap: each store uses its own secret key (checked with Tap before it is stored); an order is paid only after the charge is read back from Tap with that key and is `CAPTURED` for our amount and currency. A forged notification or a made-up `tap_id` in the address cannot pay an order; one store's key cannot settle another store's charge.
+- [x] Shoppers are redirected only to `https` payment pages (the local test stand-in needs an explicit `ALLOW_LOCAL_PAYMENT_PAGE=1`, set only by the browser tests).
+- [ ] Tap's notification `hashstring` has not been checked against a real notification (needs a public server). Decisions do not depend on it.
+- [ ] A completed Tap payment has not been observed end to end on the real sandbox.
 - [ ] No CAPTCHA or phone verification on guest checkout: a bot can place fake COD orders up to the rate limit, holding stock until the merchant cancels.
 - [ ] Unpaid online orders are not cancelled automatically (no background worker yet).
 

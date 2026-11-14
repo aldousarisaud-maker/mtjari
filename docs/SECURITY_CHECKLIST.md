@@ -119,6 +119,8 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, not 
 - [ ] Hesabe has been exercised on its real sandbox for checkout creation and unpaid enquiry only; paid status, notifications and a wrong secret key are unverified.
 - [x] Tabby: same rule. An order is paid only after the payment is read back with the store's own key and is `AUTHORIZED` (or fully captured `CLOSED`) for our amount; the capture runs only after that verified settlement, never for a refused or duplicate event; the notification and `payment_id` are hints only. Keys encrypted, never returned.
 - [ ] Tabby has not been exercised against real Tabby at all (no test key available); the whole integration rests on its documentation.
+- [x] Deema: same rule. An order is paid only after the order is read back with the store's own API key and is `captured` / `fully_captured` for our amount and currency; the notification body is never trusted. The key is encrypted and never returned.
+- [ ] Deema has not been exercised against real Deema at all (no sandbox key available); the whole integration rests on its documentation.
 - [ ] MyFatoorah has been exercised on its real sandbox for invoice creation only; status reading and a completed payment are unverified.
 - [ ] Tap's notification `hashstring` has not been checked against a real notification (needs a public server). Decisions do not depend on it.
 - [ ] A completed Tap payment has not been observed end to end on the real sandbox.

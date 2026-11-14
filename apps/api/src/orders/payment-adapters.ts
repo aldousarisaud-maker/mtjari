@@ -62,6 +62,8 @@ export interface PaymentAdapter {
   readonly kind: 'offline' | 'online';
   readonly name: { ar: string; en: string };
   readonly credentialFields: readonly CredentialField[];
+  /** The provider has no API to register our notification address, so the merchant enters it in the provider's portal; the dashboard shows it. */
+  readonly manualWebhook?: boolean;
   /** Online only: registers the payment with the provider. */
   initiate?(input: InitiateInput): Promise<{ providerRef: string; redirectUrl: string | null }>;
   /** Online only: authenticates the notification and translates it. Throws when it cannot be trusted. */
@@ -758,6 +760,129 @@ export class TabbyAdapter implements PaymentAdapter {
   }
 }
 
+/**
+ * Deema (https://docs.deema.me), instalments, redirect flow:
+ *  1. POST /api/merchant/v1/purchase creates an order for the server-computed total (KWD) and returns
+ *     `order_reference` and `redirect_link`.
+ *  2. The shopper pays there and returns to our success or failure address (we add `pay_return=1`, since the
+ *     documentation names no return parameters).
+ *  3. GET /api/merchant/v1/purchase/{order_reference}/retrieve_by_reference is the source of truth: it returns
+ *     the status, amount and currency. Only `captured` or `fully_captured` for our amount is paid.
+ * Each merchant enters their own API key and chooses sandbox or production; nothing is shared.
+ * Deema has no API to register notifications: the merchant enters our address in their Deema portal.
+ */
+export class DeemaAdapter implements PaymentAdapter {
+  static readonly URLS = { sandbox: 'https://sandbox-api.deema.me', production: 'https://api.deema.me' } as const;
+  readonly id = 'deema';
+  readonly kind = 'online' as const;
+  readonly name = { ar: 'ديما (اشترِ الآن وادفع لاحقاً)', en: 'Deema (buy now, pay later)' };
+  readonly manualWebhook = true;
+  readonly credentialFields: readonly CredentialField[] = [
+    { key: 'apiKey', label: { ar: 'مفتاح الـAPI (API Key)', en: 'API key' } },
+    {
+      key: 'environment', label: { ar: 'البيئة', en: 'Environment' }, type: 'select',
+      options: [
+        { value: 'sandbox', label: { ar: 'تجريبية (Sandbox)', en: 'Sandbox (testing)' } },
+        { value: 'production', label: { ar: 'حقيقية (Production)', en: 'Production (real payments)' } },
+      ],
+    },
+  ];
+  private readonly logger = new Logger('Deema');
+  private static readonly REFERENCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  private static readonly FAILED = new Set(['declined', 'declined_by_regulator', 'declined_by_deema', 'payment_cancelled', 'expired']);
+
+  /** `overrideUrl` replaces both addresses; it is set only by the automated tests. */
+  constructor(private readonly overrideUrl?: string) {}
+
+  private keys(credentials: Record<string, string>) {
+    const apiKey = credentials['apiKey'] ?? '';
+    const environment = credentials['environment'];
+    if ((environment !== 'sandbox' && environment !== 'production') || !/^[\x21-\x7e]{16,300}$/.test(apiKey)) throw new BadRequestException('invalid_payment_credentials');
+    return { apiKey, url: this.overrideUrl ?? DeemaAdapter.URLS[environment] };
+  }
+
+  mode(credentials: Record<string, string>): 'test' | 'live' | null {
+    return credentials['environment'] === 'sandbox' ? 'test' : credentials['environment'] === 'production' ? 'live' : null;
+  }
+
+  private async call(k: { apiKey: string; url: string }, method: 'GET' | 'POST', path: string, body?: unknown): Promise<{ status: number; json: unknown }> {
+    try {
+      const res = await fetch(`${k.url}/api/merchant/v1${path}`, {
+        method, signal: AbortSignal.timeout(10_000),
+        // The documentation specifies "Authorization: Basic {API Key}" with the key as given.
+        headers: { authorization: `Basic ${k.apiKey}`, accept: 'application/json', ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const text = await res.text();
+      let json: unknown = null;
+      try { json = JSON.parse(text); } catch { /* not JSON */ }
+      if (res.status >= 500) throw new BadGatewayException('payment_provider_unreachable');
+      return { status: res.status, json };
+    } catch (e) {
+      if (e instanceof BadGatewayException) throw e;
+      this.logger.warn(`Deema ${method} ${path.split('/').slice(0, 2).join('/')} unreachable: ${(e as Error).name}`);
+      throw new BadGatewayException('payment_provider_unreachable');
+    }
+  }
+
+  /**
+   * Looks up an order that cannot exist. A wrong key is answered 401; a good key gets "Purchase not found" (404).
+   * Nothing is created in the merchant's account.
+   */
+  async checkCredentials(credentials: Record<string, string>, store: { currency: string }) {
+    const k = this.keys(credentials);
+    if (store.currency !== 'KWD') throw new BadRequestException('payment_currency_mismatch');
+    const { status } = await this.call(k, 'GET', `/purchase/${randomUUID()}/retrieve_by_reference`);
+    if (status !== 404) throw new BadRequestException('invalid_payment_credentials');
+    return { mode: this.mode(credentials)! };
+  }
+
+  async initiate(input: InitiateInput) {
+    const k = this.keys(input.credentials);
+    if (input.currency !== 'KWD') throw new BadGatewayException('payment_provider_error');
+    const back = `${input.returnUrl}?pay_return=1`;
+    const { status, json } = await this.call(k, 'POST', '/purchase', {
+      amount: Number(fromMinor(input.amount, 'KWD')), currency_code: 'KWD', merchant_order_id: input.orderId,
+      merchant_urls: { success: back, failure: back },
+    });
+    if (status === 401 || status === 403) throw new BadGatewayException('payment_provider_rejected_credentials');
+    const body = (json ?? {}) as { message?: unknown; data?: { order_reference?: unknown; redirect_link?: unknown } | null };
+    if (status === 400 && typeof body.message === 'string' && body.message.startsWith('Customer is not able')) throw new BadRequestException('payment_not_approved');
+    const ref = body.data?.order_reference;
+    const link = body.data?.redirect_link;
+    if (status !== 200 || typeof ref !== 'string' || !DeemaAdapter.REFERENCE.test(ref) || typeof link !== 'string'
+      || !(link.startsWith('https://') || (this.overrideUrl && link.startsWith(`${this.overrideUrl}/`)))) {
+      this.logger.warn(`Deema refused checkout for order ${input.orderId}: HTTP ${status}`);
+      throw new BadGatewayException('payment_provider_error');
+    }
+    return { providerRef: ref, redirectUrl: link };
+  }
+
+  async fetchStatus(input: { providerRef: string; credentials: Record<string, string> }): Promise<VerifiedWebhook> {
+    if (!DeemaAdapter.REFERENCE.test(input.providerRef)) throw new BadRequestException('invalid_payment_reference');
+    const k = this.keys(input.credentials);
+    const { status, json } = await this.call(k, 'GET', `/purchase/${input.providerRef}/retrieve_by_reference`);
+    const d = ((json ?? {}) as { data?: { order_reference?: unknown; status?: unknown; amount?: unknown; currency_code?: unknown } | null }).data;
+    if (status !== 200 || !d || typeof d.order_reference !== 'string' || d.order_reference.toLowerCase() !== input.providerRef.toLowerCase()
+      || typeof d.status !== 'string' || (typeof d.amount !== 'number' && typeof d.amount !== 'string') || typeof d.currency_code !== 'string') throw new BadGatewayException('payment_provider_error');
+    const state = d.status.toLowerCase();
+    const currency = d.currency_code.toUpperCase();
+    const amount = decimalsOf(currency) === null ? null : toMinor(String(d.amount), currency);
+    // "authorized" only reserves funds; the money is ours once Deema says captured.
+    const outcome = state === 'captured' || state === 'fully_captured' ? 'paid' : DeemaAdapter.FAILED.has(state) ? 'failed' : 'ignored';
+    return { eventId: `${input.providerRef}:${state}`, type: `order.${state}`, providerRef: input.providerRef, outcome, amount: amount ?? undefined, currency };
+  }
+
+  /** The notification only names the order (`order_ref`); the answer comes from Deema's order details API. */
+  async verifyWebhook(input: { rawBody: Buffer; headers: Record<string, string | string[] | undefined>; credentials: Record<string, string> }) {
+    let body: { order_ref?: unknown };
+    try { body = JSON.parse(input.rawBody.toString('utf8')) as typeof body; } catch { throw new UnauthorizedException('invalid_payload'); }
+    const ref = typeof body?.order_ref === 'string' ? body.order_ref : '';
+    if (!DeemaAdapter.REFERENCE.test(ref)) throw new UnauthorizedException('invalid_payload');
+    return this.fetchStatus({ providerRef: ref, credentials: input.credentials });
+  }
+}
+
 @Injectable()
 export class PaymentRegistry {
   private readonly adapters = new Map<string, PaymentAdapter>();
@@ -768,6 +893,7 @@ export class PaymentRegistry {
     this.add(new MyFatoorahAdapter(env.MYFATOORAH_API_URL?.replace(/\/+$/, '')));
     this.add(new HesabeAdapter(env.HESABE_API_URL?.replace(/\/+$/, '')));
     this.add(new TabbyAdapter(env.TABBY_API_URL?.replace(/\/+$/, '')));
+    this.add(new DeemaAdapter(env.DEEMA_API_URL?.replace(/\/+$/, '')));
     if (env.NODE_ENV === 'test') this.add(new TestGatewayAdapter());
   }
 

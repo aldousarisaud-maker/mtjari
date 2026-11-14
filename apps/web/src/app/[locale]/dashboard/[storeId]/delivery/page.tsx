@@ -10,7 +10,12 @@ import { RowAction } from '../row-action';
 
 interface Zone { id: string; nameAr: string; nameEn: string; fee: number; freeAbove: number | null; isActive: boolean }
 interface Settings { pickupEnabled: boolean; pickupInstructionsAr: string; pickupInstructionsEn: string; minOrderAmount: number }
-interface Method { provider: string; kind: 'offline' | 'online'; name: { ar: string; en: string }; credentialFields: { key: string; label: { ar: string; en: string }; type: 'secret' | 'select'; options: { value: string; label: { ar: string; en: string } }[] | null; value: string | null }[]; configured: boolean; enabled: boolean; mode: 'test' | 'live' | null }
+/** Providers with their own help text and (except Tap) their own test/live hint. */
+const HELPED = ['tap', 'myfatoorah', 'hesabe', 'tabby', 'deema'] as const;
+type Helped = (typeof HELPED)[number];
+const isHelped = (p: string): p is Helped => (HELPED as readonly string[]).includes(p);
+
+interface Method { provider: string; kind: 'offline' | 'online'; name: { ar: string; en: string }; credentialFields: { key: string; label: { ar: string; en: string }; type: 'secret' | 'select'; options: { value: string; label: { ar: string; en: string } }[] | null; value: string | null }[]; configured: boolean; enabled: boolean; mode: 'test' | 'live' | null; webhookUrl?: string | null }
 
 export default async function DeliveryPage({ params }: { params: Promise<{ locale: string; storeId: string }> }) {
   const { locale, storeId } = await params;
@@ -66,8 +71,9 @@ export default async function DeliveryPage({ params }: { params: Promise<{ local
                   {m.mode ? <Badge className={m.mode === 'live' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} data-testid={`mode-${m.provider}`}>{t(l, `d.mode.${m.mode}`)}</Badge> : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">{t(l, `d.kind.${m.kind}`)}</p>
-                {m.mode ? <p className="mt-1 text-xs text-slate-500">{t(l, m.provider === 'myfatoorah' || m.provider === 'hesabe' || m.provider === 'tabby' ? `d.modeHint.${m.provider}.${m.mode}` : `d.modeHint.${m.mode}`)}</p> : null}
-                {(m.provider === 'tap' || m.provider === 'myfatoorah' || m.provider === 'hesabe' || m.provider === 'tabby') && !m.enabled ? <p className="mt-2 text-sm text-slate-600">{t(l, `d.help.${m.provider}`)}</p> : null}
+                {m.mode ? <p className="mt-1 text-xs text-slate-500">{t(l, isHelped(m.provider) && m.provider !== 'tap' ? `d.modeHint.${m.provider}.${m.mode}` : `d.modeHint.${m.mode}`)}</p> : null}
+                {isHelped(m.provider) && !m.enabled ? <p className="mt-2 text-sm text-slate-600">{t(l, `d.help.${m.provider}`)}</p> : null}
+                {m.webhookUrl ? <p className="mt-2 text-sm text-slate-600">{t(l, 'd.webhookUrl')} <code dir="ltr" className="break-all rounded bg-slate-100 px-1.5 py-0.5 text-xs" data-testid={`webhook-url-${m.provider}`}>{m.webhookUrl}</code></p> : null}
                 <ActionForm action={setPaymentMethodAction} className="mt-3 space-y-3">
                   <Hidden /><input type="hidden" name="provider" value={m.provider} /><input type="hidden" name="enabled" value={m.enabled ? 'false' : 'true'} />
                   {/* Secrets are write-only: the stored value is never sent to the browser. */}

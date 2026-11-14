@@ -408,6 +408,10 @@ const ar = {
   'd.help.tabby': 'من لوحة تابي (merchant.tabby.ai) خذ المفتاح السري (يبدأ بـ sk_test_ للتجريبي) ورمز التاجر. اختر نطاق الحساب. نتحقق من المفتاحين مع تابي عند الحفظ ونسجّل عنوان إشعارات الدفع تلقائياً. بعد تفويض الدفع نؤكده لدى تابي (capture) تلقائياً. العميل يحتاج بريداً إلكترونياً ليستخدم تابي. المفاتيح لا تُعرض بعد حفظها.',
   'd.modeHint.tabby.test': 'مفتاح تجريبي: لا تُخصم مبالغ حقيقية من العملاء.',
   'd.modeHint.tabby.live': 'مفتاح حقيقي: المدفوعات حقيقية وتذهب إلى حسابك في تابي.',
+  'd.help.deema': 'من لوحة تاجر ديما (Merchant Portal) خذ مفتاح الـAPI واختر البيئة التجريبية للبداية. المتجر يجب أن يكون بالدينار الكويتي. نتحقق من المفتاح عند الحفظ دون إنشاء أي طلب. ديما لا تتيح تسجيل عنوان الإشعارات برمجياً: أضف العنوان الظاهر أدناه في قسم Webhook في لوحة ديما (الهيدر اختياري). المفتاح لا يُعرض بعد حفظه.',
+  'd.webhookUrl': 'عنوان الإشعارات الذي تضيفه في لوحة المزوّد:',
+  'd.modeHint.deema.test': 'البيئة التجريبية: لا تُخصم مبالغ حقيقية من العملاء.',
+  'd.modeHint.deema.live': 'بيئة حقيقية: المدفوعات حقيقية وتذهب إلى حسابك في ديما.',
 } as const;
 
 export type Key = keyof typeof ar;
@@ -816,6 +820,10 @@ const en: Record<Key, string> = {
   'd.help.tabby': 'From your Tabby dashboard (merchant.tabby.ai) take the secret key (it starts with sk_test_ for testing) and the merchant code, and choose the account region. Both are checked with Tabby when you save, and our payment-notification address is registered automatically. Once Tabby authorizes a payment we capture it automatically. Shoppers need an email address to use Tabby. The keys are never shown again.',
   'd.modeHint.tabby.test': 'Test key: shoppers are not charged real money.',
   'd.modeHint.tabby.live': 'Live key: payments are real and go to your Tabby account.',
+  'd.help.deema': 'From your Deema Merchant Portal take the API key, and start with the sandbox environment. The store must sell in KWD. The key is checked when you save, without creating any order. Deema cannot register the notification address through its API: add the address shown below in the Webhook section of the Deema portal (the header is optional). The key is never shown again.',
+  'd.webhookUrl': 'Notification address to add in the provider\'s portal:',
+  'd.modeHint.deema.test': 'Sandbox environment: shoppers are not charged real money.',
+  'd.modeHint.deema.live': 'Production environment: payments are real and go to your Deema account.',
 };
 
 const dict: Record<Locale, Record<Key, string>> = { ar, en };

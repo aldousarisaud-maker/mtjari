@@ -34,6 +34,8 @@ export default defineConfig({
     { command: 'node fake-hesabe.mjs', url: 'http://127.0.0.1:2529/health', reuseExistingServer: false },
     // Test-only stand-in for Tabby (see fake-tabby.mjs).
     { command: 'node fake-tabby.mjs', url: 'http://127.0.0.1:2530/health', reuseExistingServer: false },
+    // Test-only stand-in for Deema (see fake-deema.mjs).
+    { command: 'node fake-deema.mjs', url: 'http://127.0.0.1:2531/health', reuseExistingServer: false },
     {
       command: 'node ../api/dist/main.js',
       url: `http://127.0.0.1:${API_PORT}/v1/health`,
@@ -59,6 +61,7 @@ export default defineConfig({
         MYFATOORAH_API_URL: 'http://127.0.0.1:2528',
         HESABE_API_URL: 'http://127.0.0.1:2529',
         TABBY_API_URL: 'http://127.0.0.1:2530',
+        DEEMA_API_URL: 'http://127.0.0.1:2531',
         API_PUBLIC_URL: `http://127.0.0.1:${API_PORT}`,
         // Uploaded images go to a throw-away folder and are served by the API.
         STORAGE_DRIVER: 'local',

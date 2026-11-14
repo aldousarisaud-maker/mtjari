@@ -1,6 +1,6 @@
 # Mtjari.cc — Payment Integrations
 
-Status: **Cash on Delivery, Tap Payments, MyFatoorah, Hesabe and Tabby are built.** Tap and MyFatoorah were built from their official documentation and only partly checked on their real sandboxes (see their sections below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
+Status: **Cash on Delivery, Tap Payments, MyFatoorah, Hesabe, Tabby and Deema are built.** Tap and MyFatoorah were built from their official documentation and only partly checked on their real sandboxes (see their sections below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
 
 ## Principles
 
@@ -96,6 +96,20 @@ Source: https://docs.tabby.ai (checkout flow, payment processing, statuses, webh
 
 Not verified with real Tabby: everything (see IMPLEMENTATION_PLAN.md). Go-live also needs Tabby's QA review and promo snippets.
 
+## Deema (built)
+
+Source: https://docs.deema.me (Getting Started, Create Online Checkout, Retrieve Order Details, Order Statuses, Post Checkout Webhook, read 2026-11-14).
+
+| Step | What happens |
+|---|---|
+| Merchant setup | API key and environment (`sandbox-api.deema.me` / `api.deema.me`). Encrypted, never returned. Saving looks up a non-existent order (401 wrong key, 404 good key). The merchant enters our notification address in their Deema portal (the dashboard shows it). |
+| Checkout | `POST /api/merchant/v1/purchase` with amount, `KWD`, our order id and success/failure addresses (both with `pay_return=1`). Redirect to `redirect_link`. |
+| Shopper returns | The order page sees `pay_return` and asks the API, which reads the orders **it created for this order**. |
+| Paid | Only `captured` / `fully_captured` with our amount and currency. |
+| Notification | Only `order_ref` is taken from the body; the order details call decides. |
+
+Not verified with real Deema: everything (see IMPLEMENTATION_PLAN.md).
+
 ## Gateway manager features → where they live
 
 | Feature | Implementation |
@@ -121,7 +135,7 @@ Columns: what the provider is, what Mtjari needs from each merchant, and open qu
 | **Hesabe** (built) | Gateway | KW | Merchant code, access code, secret key, IV | Paid-transaction enquiry shape, notification body, wrong-secret answer, refund API |
 | **Tabby** (built) | BNPL | SA, AE, KW (confirm others) | Tabby merchant account, public + secret keys, merchant code per currency | Country/currency list, pre-scoring call, capture/close/refund flow, webhook auth header |
 | **Tamara** | BNPL | SA, AE, KW (confirm others) | Tamara merchant account, API token, notification token | Order authorise/capture steps, webhook JWT verification, min/max amounts |
-| **Deema** | BNPL | KW (confirm others) | Deema merchant account and API key | Whether a public API is open to all merchants, webhook format, refund support |
+| **Deema** (built) | BNPL | KW (confirm others) | Deema merchant account and API key | Whether a public API is open to all merchants, webhook format, refund support |
 | **Taly** | BNPL | KW (confirm others) | Taly merchant account and credentials | Whether a public API exists or integration is by agreement only |
 | **mada** | Card **network** (Saudi debit) | SA | Not a gateway: enabled through a PSP/acquirer that supports it | Offered as a payment *method* of Tap / MyFatoorah / another acquirer when the merchant's account has mada enabled; requires SAR and usually a Saudi-registered business |
 | **Cash on Delivery** | Offline | All | Nothing | Optional fee, max order amount, allowed zones |

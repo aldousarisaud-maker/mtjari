@@ -52,6 +52,8 @@ export class PaymentMethodsService {
           // Only non-secret choices are shown back.
           value: f.type === 'select' ? creds[f.key] ?? null : null,
         })),
+        // Providers whose notification address the merchant must enter in the provider's own portal.
+        webhookUrl: a.manualWebhook && this.publicUrl ? `${this.publicUrl}/v1/webhooks/payments/${a.id}/${t.storeId}` : null,
         configured, enabled: !!row?.enabled && configured,
         // Whether the stored key is a test or a live one (online providers only); the key itself is not sent.
         mode: configured ? a.mode?.(creds) ?? null : null,

@@ -131,7 +131,7 @@ Mutation checks: removing the webhook amount check, the webhook signature check,
 - Address forms for countries other than Kuwait (phone rules exist for the six GCC countries; the address form is Kuwait-shaped).
 - Per-zone area lists, COD fee, COD limits per zone.
 
-## Phase 5 — Payment providers (in progress: Tap, MyFatoorah, Hesabe and Tabby built, others not started)
+## Phase 5 — Payment providers (in progress: Tap, MyFatoorah, Hesabe, Tabby and Deema built, others not started)
 
 **Tap Payments: built.** Each merchant pastes their own Tap secret key in Dashboard → Delivery and payment; nothing is shared between stores and the platform holds no Tap account.
 
@@ -175,9 +175,18 @@ How it was verified, honestly:
 - **Automated tests** (16 API tests, 4 browser tests) run against a local stand-in (`apps/e2e/fake-tabby.mjs`) built from Tabby's documentation. Mutation checks (treat a cancelled payment as paid; capture on any event; never capture) make the tests fail.
 - **Not verified with real Tabby** (no test key exists in this project and none is public): everything. The paths, payload and response shapes come from docs.tabby.ai and its OpenAPI file only. Also unverified: that Kuwait merchants use `api.tabby.ai` (the docs name only a UAE and a KSA address), whether `KWD` is accepted for a given merchant code, the webhook-list response shape used to avoid duplicate registration, and refunds. Tabby requires its QA review and its on-site promo snippets before go-live; neither is built.
 
-**Next providers** (not started): Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+**Deema: built** (buy now, pay later, Kuwait). Each merchant enters their own API key and chooses sandbox or production; nothing is shared. KWD only (other store currencies are refused with `payment_currency_mismatch`).
+- Checkout creates a Deema order (`POST /api/merchant/v1/purchase`) for the server-computed total. The documentation names no return parameters, so the success and failure addresses carry our own `pay_return=1`, which makes the order page ask the API what happened. A customer Deema will not serve gets `payment_not_approved` and no order or stock is taken.
+- An order is paid only after the API reads the order back (`GET /purchase/{order_reference}/retrieve_by_reference`, which returns status, amount and currency) with the merchant's key and it is `captured` or `fully_captured` for the same amount and currency. `authorized`, `pending` and partial or refunded states are not a payment; `declined*`, `payment_cancelled` and `expired` are failures. Notifications are only hints: we take `order_ref` from the body and read the order back.
+- Saving the key looks up an order that cannot exist: a wrong key gets 401, a good one gets 404 "Purchase not found". Nothing is created in the merchant's account.
+- Deema has no API to register notifications, so the dashboard shows the merchant the exact address to enter in the Webhook section of their Deema portal. Until they do, payments are still found when the shopper returns to the shop.
+- Base addresses: the current reference (docs.deema.me) names `sandbox-api.deema.me` and `api.deema.me`; an older page (api-docs.deema.me) still shows `staging-api.deema.me`. We use the current one.
+- **Automated tests** (14 API tests, 3 browser tests) run against a local stand-in (`apps/e2e/fake-deema.mjs`) built from Deema's documentation. Mutation checks (treat `authorized` as paid; trust the notification body) make the tests fail.
+- **Not verified with real Deema** (no sandbox key exists in this project and none is public): everything. All shapes are from docs.deema.me only. In particular: the exact `Authorization: Basic {API Key}` format (the key is sent as given, not base64-encoded, as the docs say), the 401/404 behaviour used to check a key, the notification body and its retries, which status a finished payment really ends in, and refunds and cancellation (not built). Deema requires a sandbox test (one payment, a cancel and a refund in its portal, webhook received) and its widget on the live site before go-live; the widget is not built.
 
-Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/api` 214 (after Hesabe), Playwright 66. After Tabby: `apps/api` 230, Playwright 70.
+**Next providers** (not started): Tamara, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+
+Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/api` 214 (after Hesabe), Playwright 66. After Tabby: `apps/api` 230, Playwright 70. After Deema: `apps/api` 244, Playwright 73.
 
 ## Phase 6 — Remaining 20 templates and visual builder
 Section-based editor with drag and drop, device previews, colour and typography editors, header/footer builders, undo/redo, version history, sanitised custom CSS.

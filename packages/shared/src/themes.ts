@@ -14,15 +14,42 @@ const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'invalid_color');
 // Plain text only: these strings are rendered as text, never as HTML.
 const text = (max: number) => z.string().trim().max(max).refine((v) => !/[<>]/.test(v), 'invalid_text');
 
+// ---- home page sections (the visual builder edits this list) ---------
+export const SECTION_TYPES = ['hero', 'products', 'categories', 'banner', 'text'] as const;
+export type SectionType = (typeof SECTION_TYPES)[number];
+export const MAX_SECTIONS = 12;
+const sectionId = z.string().regex(/^[a-z0-9-]{1,24}$/, 'invalid_section_id');
+
+export const sectionSchema = z.discriminatedUnion('type', [
+  /** The theme's own headline block; its texts are `hero` below. At most one. */
+  z.strictObject({ id: sectionId, type: z.literal('hero') }),
+  /** A product grid: newest products, or one category's. */
+  z.strictObject({ id: sectionId, type: z.literal('products'), titleAr: text(60), titleEn: text(60), categoryId: z.string().uuid().nullable(), limit: z.number().int().min(4).max(24) }),
+  /** The top-level categories. At most one. */
+  z.strictObject({ id: sectionId, type: z.literal('categories') }),
+  /** A strip of text, optionally with a "shop now" button. */
+  z.strictObject({ id: sectionId, type: z.literal('banner'), textAr: text(160), textEn: text(160), button: z.boolean() }),
+  /** A heading and a short paragraph. */
+  z.strictObject({ id: sectionId, type: z.literal('text'), titleAr: text(80), titleEn: text(80), bodyAr: text(1000), bodyEn: text(1000) }),
+]);
+export type Section = z.infer<typeof sectionSchema>;
+export type SectionOf<T extends SectionType> = Extract<Section, { type: T }>;
+
+export const sectionsSchema = z.array(sectionSchema).min(1).max(MAX_SECTIONS).superRefine((list, ctx) => {
+  if (new Set(list.map((x) => x.id)).size !== list.length) ctx.addIssue({ code: 'custom', message: 'duplicate_section_id' });
+  for (const type of ['hero', 'categories'] as const) {
+    if (list.filter((x) => x.type === type).length > 1) ctx.addIssue({ code: 'custom', message: `only_one_${type}` });
+  }
+});
+
 export const themeSettingsSchema = z.strictObject({
   colors: z.strictObject({ primary: hex, accent: hex }),
   /** Bar above the header. Empty = hidden. */
   announcement: z.strictObject({ ar: text(140), en: text(140) }),
   /** Home page headline. Empty title = the store name is used. */
   hero: z.strictObject({ titleAr: text(90), titleEn: text(90), subtitleAr: text(200), subtitleEn: text(200) }),
-  /** Category highlighted on the home page; null = newest products. */
-  featuredCategoryId: z.string().uuid().nullable(),
-  homeProductLimit: z.number().int().min(4).max(24),
+  /** The home page, top to bottom. */
+  sections: sectionsSchema,
 });
 export type ThemeSettings = z.infer<typeof themeSettingsSchema>;
 
@@ -36,7 +63,9 @@ export interface ThemeManifest {
   defaults: ThemeSettings;
 }
 
-const base = { featuredCategoryId: null, homeProductLimit: 8 } as const;
+/** The layout each theme was designed around; stored settings without `sections` start from this. */
+const layout = (limit: number, order: ('hero' | 'categories' | 'products')[]): Section[] => order.map((type): Section =>
+  type === 'products' ? { id: 'products', type, titleAr: '', titleEn: '', categoryId: null, limit } : { id: type, type });
 
 export const THEMES: Record<ThemeId, ThemeManifest> = {
   'modern-electronics': {
@@ -49,7 +78,7 @@ export const THEMES: Record<ThemeId, ThemeManifest> = {
     },
     dark: false,
     defaults: {
-      ...base, homeProductLimit: 12,
+      sections: layout(12, ['hero', 'products']),
       colors: { primary: '#2563EB', accent: '#F59E0B' },
       announcement: { ar: '', en: '' },
       hero: { titleAr: '', titleEn: '', subtitleAr: 'أحدث الأجهزة والإكسسوارات في مكان واحد', subtitleEn: 'The latest devices and accessories in one place' },
@@ -65,7 +94,7 @@ export const THEMES: Record<ThemeId, ThemeManifest> = {
     },
     dark: false,
     defaults: {
-      ...base, homeProductLimit: 6,
+      sections: layout(6, ['hero', 'products']),
       colors: { primary: '#111111', accent: '#A16207' },
       announcement: { ar: '', en: '' },
       hero: { titleAr: '', titleEn: '', subtitleAr: 'المجموعة الجديدة', subtitleEn: 'The new collection' },
@@ -81,7 +110,7 @@ export const THEMES: Record<ThemeId, ThemeManifest> = {
     },
     dark: true,
     defaults: {
-      ...base,
+      sections: layout(8, ['hero', 'products', 'categories']),
       colors: { primary: '#C8A45C', accent: '#F3E7C9' },
       announcement: { ar: '', en: '' },
       hero: { titleAr: '', titleEn: '', subtitleAr: 'عطور مختارة بعناية', subtitleEn: 'Carefully selected fragrances' },
@@ -97,7 +126,7 @@ export const THEMES: Record<ThemeId, ThemeManifest> = {
     },
     dark: false,
     defaults: {
-      ...base,
+      sections: layout(8, ['hero', 'products']),
       colors: { primary: '#6F4E37', accent: '#D97706' },
       announcement: { ar: '', en: '' },
       hero: { titleAr: '', titleEn: '', subtitleAr: 'محمّصة طازجة تصلك إلى بابك', subtitleEn: 'Freshly roasted, delivered to your door' },
@@ -113,7 +142,7 @@ export const THEMES: Record<ThemeId, ThemeManifest> = {
     },
     dark: false,
     defaults: {
-      ...base,
+      sections: layout(8, ['hero', 'categories', 'products']),
       colors: { primary: '#0F766E', accent: '#B45309' },
       announcement: { ar: '', en: '' },
       hero: { titleAr: '', titleEn: '', subtitleAr: 'أهلاً بكم في متجرنا', subtitleEn: 'Welcome to our store' },
@@ -124,14 +153,20 @@ export const THEMES: Record<ThemeId, ThemeManifest> = {
 /** Stored settings may predate newer fields: unknown keys are dropped and missing ones filled from the theme defaults. */
 export function resolveThemeSettings(themeId: ThemeId, stored: unknown): ThemeSettings {
   const d = THEMES[themeId].defaults;
-  const s = (stored && typeof stored === 'object' ? stored : {}) as Partial<Record<keyof ThemeSettings, unknown>>;
+  const s = (stored && typeof stored === 'object' ? stored : {}) as Record<string, unknown>;
   const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
+  // Before the builder, the home page had one product grid set by these two fields.
+  let sections: unknown = s['sections'];
+  if (sections === undefined && ('featuredCategoryId' in s || 'homeProductLimit' in s)) {
+    sections = d.sections.map((x) => (x.type === 'products'
+      ? { ...x, categoryId: typeof s['featuredCategoryId'] === 'string' ? s['featuredCategoryId'] : null, limit: s['homeProductLimit'] ?? x.limit }
+      : x));
+  }
   const candidate = {
-    colors: { ...d.colors, ...obj(s.colors) },
-    announcement: { ...d.announcement, ...obj(s.announcement) },
-    hero: { ...d.hero, ...obj(s.hero) },
-    featuredCategoryId: s.featuredCategoryId === undefined ? d.featuredCategoryId : s.featuredCategoryId,
-    homeProductLimit: s.homeProductLimit ?? d.homeProductLimit,
+    colors: { ...d.colors, ...obj(s['colors']) },
+    announcement: { ...d.announcement, ...obj(s['announcement']) },
+    hero: { ...d.hero, ...obj(s['hero']) },
+    sections: sections === undefined ? d.sections : sections,
   };
   const parsed = themeSettingsSchema.strip().safeParse(candidate);
   return parsed.success ? parsed.data : d;

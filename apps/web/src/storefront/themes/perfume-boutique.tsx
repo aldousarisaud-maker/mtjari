@@ -94,44 +94,53 @@ export const perfumeBoutique: Theme = {
     );
   },
 
-  Home({ ctx, products, heading, moreHref }) {
+  homeWrap: '',
+
+  Hero({ ctx }) {
     const { title, subtitle } = heroText(ctx);
     return (
-      <>
-        <section className="relative overflow-hidden">
-          <div aria-hidden className="absolute inset-x-0 top-0 mx-auto h-[28rem] max-w-3xl rounded-b-full bg-[radial-gradient(closest-side,var(--p),transparent)] opacity-15" />
-          <div className="relative mx-auto max-w-3xl px-5 py-20 text-center sm:py-28">
-            <Ornament />
-            <h1 className={`${display} mt-8 text-5xl leading-tight ${gold} sm:text-7xl`}>{title}</h1>
-            {subtitle ? <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-stone-300">{subtitle}</p> : null}
-            <Link href={ctx.href('/products')} className="mt-10 inline-flex h-12 items-center rounded-full border border-[var(--p)] px-10 text-sm font-semibold text-[var(--p)] transition hover:bg-[var(--p)] hover:text-[var(--on-p)]">{ctx.t('shopNow')}</Link>
-          </div>
+      <section className="relative overflow-hidden">
+        <div aria-hidden className="absolute inset-x-0 top-0 mx-auto h-[28rem] max-w-3xl rounded-b-full bg-[radial-gradient(closest-side,var(--p),transparent)] opacity-15" />
+        <div className="relative mx-auto max-w-3xl px-5 py-20 text-center sm:py-28">
+          <Ornament />
+          <h1 className={`${display} mt-8 text-5xl leading-tight ${gold} sm:text-7xl`}>{title}</h1>
+          {subtitle ? <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-stone-300">{subtitle}</p> : null}
+          <Link href={ctx.href('/products')} className="mt-10 inline-flex h-12 items-center rounded-full border border-[var(--p)] px-10 text-sm font-semibold text-[var(--p)] transition hover:bg-[var(--p)] hover:text-[var(--on-p)]">{ctx.t('shopNow')}</Link>
+        </div>
+      </section>
+    );
+  },
+
+  Categories({ ctx }) {
+    if (!ctx.nav.length) return null;
+    return (
+        <section aria-label={ctx.t('categories')} className="mx-auto mt-20 max-w-6xl px-5">
+          <ul className="grid gap-4 sm:grid-cols-3">
+            {ctx.nav.slice(0, 3).map((c) => (
+              <li key={c.id}>
+                <Link href={ctx.href(`/c/${c.slug}`)} className="block rounded-2xl border border-[var(--p)]/25 px-6 py-10 text-center transition hover:border-[var(--p)]">
+                  <span className={`${display} text-2xl ${gold}`}>{ctx.name(c)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
-        <section aria-labelledby="featured" className="mx-auto max-w-6xl px-5">
-          <div className="mb-8 flex items-end justify-between gap-4">
-            <h2 id="featured" className={`${display} text-3xl ${gold}`}>{heading}</h2>
-            <Link href={moreHref} className="text-sm text-stone-400 hover:text-[var(--p)]">{ctx.t('viewAll')}</Link>
-          </div>
-          {products.length ? (
-            <ul className="-mx-5 flex snap-x snap-mandatory gap-5 overflow-x-auto px-5 pb-6">
-              {products.map((p, i) => <li key={p.id} className="w-[62%] shrink-0 snap-start sm:w-[36%] lg:w-[23.5%]"><perfumeBoutique.Card ctx={ctx} product={p} priority={i < 3} /></li>)}
-            </ul>
-          ) : <p className="text-center text-sm text-stone-400">{ctx.t('emptyStore')}</p>}
-        </section>
-        {ctx.nav.length ? (
-          <section aria-label={ctx.t('categories')} className="mx-auto mt-20 max-w-6xl px-5">
-            <ul className="grid gap-4 sm:grid-cols-3">
-              {ctx.nav.slice(0, 3).map((c) => (
-                <li key={c.id}>
-                  <Link href={ctx.href(`/c/${c.slug}`)} className="block rounded-2xl border border-[var(--p)]/25 px-6 py-10 text-center transition hover:border-[var(--p)]">
-                    <span className={`${display} text-2xl ${gold}`}>{ctx.name(c)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </>
+    );
+  },
+
+  Products({ ctx, products, heading, moreHref, id }) {
+    return (
+      <section aria-labelledby={id} className="mx-auto max-w-6xl px-5">
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <h2 id={id} className={`${display} text-3xl ${gold}`}>{heading}</h2>
+          <Link href={moreHref} className="text-sm text-stone-400 hover:text-[var(--p)]">{ctx.t('viewAll')}</Link>
+        </div>
+        {products.length ? (
+          <ul className="-mx-5 flex snap-x snap-mandatory gap-5 overflow-x-auto px-5 pb-6">
+            {products.map((p, i) => <li key={p.id} className="w-[62%] shrink-0 snap-start sm:w-[36%] lg:w-[23.5%]"><perfumeBoutique.Card ctx={ctx} product={p} priority={i < 3} /></li>)}
+          </ul>
+        ) : <p className="text-center text-sm text-stone-400">{ctx.t('emptyStore')}</p>}
+      </section>
     );
   },
 

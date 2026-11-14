@@ -36,8 +36,8 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#1-local-development-verified). In sh
 ## Tests
 
 ```bash
-pnpm test                       # 290 tests: validation, money, CSV, themes, checkout rules, RLS isolation, API unit + HTTP
-pnpm --filter @mtjari/e2e e2e   # 73 browser tests: dashboard, storefront, checkout and online payment journeys, all five themes (desktop and mobile)
+pnpm test                       # 342 tests: validation, money, CSV, themes, checkout rules, RLS isolation, API unit + HTTP
+pnpm --filter @mtjari/e2e e2e   # 75 browser tests: dashboard, storefront, checkout and online payment journeys, all five themes (desktop and mobile)
 ```
 
 All suites run against a real PostgreSQL database using the same restricted role as production; browser tests also use real SMTP delivery to a local sink.

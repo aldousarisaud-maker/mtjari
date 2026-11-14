@@ -191,6 +191,13 @@ Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/a
 ## Phase 6 — Remaining 20 templates and visual builder
 Section-based editor with drag and drop, device previews, colour and typography editors, header/footer builders, undo/redo, version history, sanitised custom CSS.
 
+**Stage 1 — builder on the five existing themes: done and tested (this repo).**
+- Home page is an ordered list of sections (`hero`, `products`, `categories`, `banner`, `text`; max 12; one hero, one categories). Stored in the theme settings, validated in `@mtjari/shared`; older settings (featured category, product limit) migrate automatically.
+- Each theme draws the blocks in its own style (`Hero`, `Categories`, `Products`); `banner` and `text` are generic. Merchant text is rendered as text and markup is refused at the API.
+- Builder UI: add, remove, drag-and-drop and up/down buttons, per-section editors, colours, headline and announcement, undo/redo (one step per edit, typing coalesced), device-width preview (mobile/tablet/desktop) in a frame showing the real storefront with a signed preview token, save draft, save and publish.
+- Version history: every publish stores a snapshot in `store_theme_versions` (append-only for the app role, RLS per store); restore loads a version into the draft only. Product sections pointing at a deleted category fall back to newest products.
+- Not built yet (stage 2): typography editor, header/footer builders, custom pages, sanitised custom CSS, the 20 remaining templates. The preview shows the last *saved* draft, not unsaved keystrokes.
+
 ## Phase 7 — SEO and Google integrations
 SEO manager, structured data, redirects, 404 monitoring, hreflang, audit tool and internal score, GA4/GTM, Google Ads conversions with deduplication and consent, Merchant Center feed. See SEO_STRATEGY.md.
 

@@ -268,6 +268,105 @@ test('shops are separate sites: no dashboard, no other shop, no internal routes'
   expect(await (await page.request.get('http://localhost:3100/robots.txt')).text()).not.toContain(SLUG);
 });
 
+test('the visual builder: add, reorder (drag and buttons), undo/redo, preview, publish, restore', async ({ page }) => {
+  await login(page, owner);
+  await page.goto(`${themePage}?theme=perfume-boutique`);
+  const types = () => page.getByTestId('section-list').locator('li[data-type]').evaluateAll((els) => els.map((e) => e.getAttribute('data-type')));
+  expect(await types()).toEqual(['hero', 'products', 'categories']);
+
+  // The preview frame shows the saved draft on the real storefront, at the chosen device width.
+  await expect(page.getByTestId('preview-frame')).toBeVisible();
+  await page.getByTestId('device-tablet').click();
+  await expect(page.getByTestId('device-tablet')).toHaveAttribute('aria-pressed', 'true');
+
+  // Add a banner, fill it in, and bring it to the top with the buttons.
+  await page.getByTestId('add-type').selectOption('banner');
+  await page.getByTestId('add-section').click();
+  expect(await types()).toEqual(['hero', 'products', 'categories', 'banner']);
+  const banner = page.getByTestId('section-3');
+  await banner.locator('summary').click();
+  await banner.getByLabel('النص (عربي)').fill('شحن مجاني هذا الأسبوع');
+  await expect(page.getByTestId('dirty')).toBeVisible();
+  for (const i of [3, 2, 1]) await page.getByTestId(`up-${i}`).click();
+  expect(await types()).toEqual(['banner', 'hero', 'products', 'categories']);
+
+  // Undo takes one step back, redo returns.
+  await page.getByTestId('undo').click();
+  expect(await types()).toEqual(['hero', 'banner', 'products', 'categories']);
+  await page.getByTestId('redo').click();
+  expect(await types()).toEqual(['banner', 'hero', 'products', 'categories']);
+
+  // Drag and drop moves a section too.
+  await page.getByTestId('handle-1').dragTo(page.getByTestId('handle-3'));
+  await expect.poll(types).toEqual(['banner', 'products', 'categories', 'hero']);
+  await page.getByTestId('undo').click();
+  expect(await types()).toEqual(['banner', 'hero', 'products', 'categories']);
+
+  // Only one hero and one categories section: they are no longer offered.
+  expect(await page.getByTestId('add-type').locator('option').evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value))).toEqual(['products', 'banner', 'text']);
+
+  // Save: the preview now shows the banner; nothing is public yet.
+  await page.getByTestId('save-draft').click();
+  await expect(page.getByTestId('builder-status')).toContainText('تم حفظ المسودة');
+  await expect(page.getByTestId('dirty')).toHaveCount(0);
+  await expect(page.frameLocator('[data-testid=preview-frame]').getByText('شحن مجاني هذا الأسبوع')).toBeVisible();
+  await page.goto(shopUrl(SLUG, '/ar'));
+  await expect(page.getByText('شحن مجاني هذا الأسبوع')).toHaveCount(0);
+
+  // Publish: shoppers see the banner above the headline.
+  await page.goto(`${themePage}?theme=perfume-boutique`);
+  await page.getByTestId('publish').click();
+  await expect(page.getByTestId('builder-status')).toContainText('تم نشر القالب');
+  await page.goto(shopUrl(SLUG, '/ar'));
+  const bannerBox = await page.getByText('شحن مجاني هذا الأسبوع').boundingBox();
+  const heroBox = await page.getByRole('heading', { level: 1 }).boundingBox();
+  expect(bannerBox!.y).toBeLessThan(heroBox!.y);
+
+  // Version history: restoring the oldest version only changes the draft.
+  await page.goto(`${themePage}?theme=perfume-boutique`);
+  const restores = page.getByTestId('restore-version');
+  await expect(restores.first()).toBeVisible();
+  expect(await restores.count()).toBeGreaterThanOrEqual(2);
+  await restores.last().click();
+  await expect(page.getByTestId('builder-status')).toContainText('استُعيد الإصدار');
+  expect(await types()).toEqual(['hero', 'products', 'categories']);
+  await page.goto(shopUrl(SLUG, '/ar'));
+  await expect(page.getByText('شحن مجاني هذا الأسبوع')).toBeVisible(); // live page unchanged
+
+  // Leave the draft as published so later steps are unaffected.
+  await page.goto(`${themePage}?theme=perfume-boutique`);
+  await page.getByTestId('publish').click();
+  await expect(page.getByTestId('builder-status')).toContainText('تم نشر القالب');
+});
+
+test('every theme draws every kind of home section in the merchant’s order', async ({ page }) => {
+  const overview = await apiCall<{ themes: { id: string; draft: Record<string, unknown> }[] }>(shop.token, 'GET', `/v1/stores/${shop.storeId}/theme`);
+  const sections = [
+    { id: 'b1', type: 'banner', textAr: 'عرض الأسبوع', textEn: 'Deal of the week', button: true },
+    { id: 'h1', type: 'hero' },
+    { id: 't1', type: 'text', titleAr: 'قصتنا', titleEn: 'Our story', bodyAr: 'نص تجريبي', bodyEn: 'Sample' },
+    { id: 'c1', type: 'categories' },
+    { id: 'p1', type: 'products', titleAr: 'الأكثر طلباً', titleEn: 'Most wanted', categoryId: null, limit: 4 },
+  ];
+  // Markup in a section is refused, as it is everywhere else.
+  await expect(apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/theme/draft`, { themeId: 'perfume-boutique', settings: { ...overview.themes[0]!.draft, sections: sections.map((x) => (x.type === 'text' ? { ...x, bodyAr: '<b>x</b>' } : x)) } })).rejects.toThrow('invalid_text');
+  for (const th of overview.themes) {
+    await apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/theme/draft`, { themeId: th.id, settings: { ...th.draft, sections } });
+    await apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/theme/publish`, { themeId: th.id });
+    const res = await shopGet(page, shopUrl(SLUG, '/ar'));
+    expect(res.status(), th.id).toBe(200);
+    const html = await res.text();
+    for (const needle of ['عرض الأسبوع', 'قصتنا', 'الأكثر طلباً', '<h1']) expect(html, `${th.id}: ${needle}`).toContain(needle);
+    // Order is the merchant's: banner, then headline, then the story.
+    expect(html.indexOf('عرض الأسبوع'), th.id).toBeLessThan(html.indexOf('<h1'));
+    expect(html.indexOf('<h1'), th.id).toBeLessThan(html.indexOf('قصتنا'));
+  }
+  // Put the perfume theme back as the later steps expect.
+  const perfume = overview.themes.find((x) => x.id === 'perfume-boutique')!;
+  await apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/theme/draft`, { themeId: 'perfume-boutique', settings: perfume.draft });
+  await apiCall(shop.token, 'POST', `/v1/stores/${shop.storeId}/theme/publish`, { themeId: 'perfume-boutique' });
+});
+
 test('switching theme changes the design and nothing else; taking the store offline hides it', async ({ page }) => {
   await login(page, owner);
   await page.goto(themePage);

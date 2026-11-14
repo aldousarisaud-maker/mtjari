@@ -14,6 +14,7 @@ async function seed(storeId: string, slug: string, variantId: string, cartId: st
     const p = await tx.product.create({ data: { storeId, nameEn: 'Product', slug: 'product', status: 'ACTIVE' } });
     await tx.productVariant.create({ data: { id: variantId, storeId, productId: p.id, price: 1000, stockQuantity: 5 } });
     await tx.storeTheme.create({ data: { storeId, themeId: 'gulf-premium', draft: { marker: slug } } });
+    await tx.storeThemeVersion.create({ data: { storeId, themeId: 'gulf-premium', settings: { marker: slug } } });
     await tx.cart.create({ data: { id: cartId, storeId, tokenHash: `hash-${slug}`, expiresAt: new Date(Date.now() + 3600_000) } });
     await tx.cartItem.create({ data: { storeId, cartId, variantId, quantity: 2 } });
   });
@@ -85,5 +86,28 @@ describe('storefront tables isolation', () => {
     await expect(
       withTenant(prisma, { storeId: A }, (tx) => tx.storeTheme.create({ data: { storeId: A, themeId: 'gulf-premium', draft: {} } })),
     ).rejects.toThrow();
+  });
+});
+
+describe('theme version history', () => {
+  it('each store sees only its own versions, and none without a tenant context', async () => {
+    for (const [storeId, slug] of [[A, 'shop-a'], [B, 'shop-b']] as const) {
+      await withTenant(prisma, { storeId }, async (tx) => {
+        expect((await tx.storeThemeVersion.findMany()).map((v) => (v.settings as { marker: string }).marker)).toEqual([slug]);
+      });
+    }
+    expect(await prisma.storeThemeVersion.count()).toBe(0);
+  });
+
+  it('cannot add a version to another store', async () => {
+    await expect(
+      withTenant(prisma, { storeId: A }, (tx) => tx.storeThemeVersion.create({ data: { storeId: B, themeId: 'coffee-house', settings: {} } })),
+    ).rejects.toThrow();
+  });
+
+  it('is append-only for the application: a version cannot be edited or deleted', async () => {
+    await expect(withTenant(prisma, { storeId: A }, (tx) => tx.storeThemeVersion.updateMany({ data: { themeId: 'x' } }))).rejects.toThrow();
+    await expect(withTenant(prisma, { storeId: A }, (tx) => tx.storeThemeVersion.deleteMany())).rejects.toThrow();
+    await withTenant(prisma, { storeId: A }, async (tx) => expect(await tx.storeThemeVersion.count()).toBe(1));
   });
 });

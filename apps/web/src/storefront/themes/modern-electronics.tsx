@@ -92,40 +92,51 @@ export const modernElectronics: Theme = {
     );
   },
 
-  Home({ ctx, products, heading, moreHref }) {
+  homeWrap: 'mx-auto max-w-7xl space-y-8 px-4 py-6',
+
+  Hero({ ctx }) {
     const { title, subtitle } = heroText(ctx);
     return (
-      <div className="mx-auto max-w-7xl space-y-8 px-4 py-6">
-        <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-[var(--p)] p-8 text-white sm:p-12">
-            <div aria-hidden className="absolute -end-16 -top-16 size-64 rounded-full border-[28px] border-white/10" />
-            <div aria-hidden className="absolute -bottom-24 end-24 size-56 rounded-full border-[20px] border-white/5" />
-            <h1 className="relative max-w-xl text-3xl font-extrabold leading-tight sm:text-5xl">{title}</h1>
-            {subtitle ? <p className="relative mt-4 max-w-lg text-base text-white/80 sm:text-lg">{subtitle}</p> : null}
-            <Link href={ctx.href('/products')} className="relative mt-8 inline-flex h-12 items-center rounded-lg bg-[var(--a)] px-6 text-sm font-extrabold text-[var(--on-a)]">{ctx.t('shopNow')}</Link>
-          </div>
-          <ul className="grid grid-cols-2 gap-3 lg:grid-cols-1">
-            {ctx.nav.slice(0, 3).map((c) => (
-              <li key={c.id}>
-                <Link href={ctx.href(`/c/${c.slug}`)} className="flex h-full min-h-20 items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 font-bold transition hover:border-[var(--p)]">
-                  <span>{ctx.name(c)}</span><span className="text-xs font-medium text-slate-500">{c.productCount}</span>
-                </Link>
-              </li>
-            ))}
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-[var(--p)] p-8 text-white sm:p-12">
+        <div aria-hidden className="absolute -end-16 -top-16 size-64 rounded-full border-[28px] border-white/10" />
+        <div aria-hidden className="absolute -bottom-24 end-24 size-56 rounded-full border-[20px] border-white/5" />
+        <h1 className="relative max-w-xl text-3xl font-extrabold leading-tight sm:text-5xl">{title}</h1>
+        {subtitle ? <p className="relative mt-4 max-w-lg text-base text-white/80 sm:text-lg">{subtitle}</p> : null}
+        <Link href={ctx.href('/products')} className="relative mt-8 inline-flex h-12 items-center rounded-lg bg-[var(--a)] px-6 text-sm font-extrabold text-[var(--on-a)]">{ctx.t('shopNow')}</Link>
+      </section>
+    );
+  },
+
+  Categories({ ctx }) {
+    if (!ctx.nav.length) return null;
+    return (
+      <section aria-label={ctx.t('categories')}>
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {ctx.nav.slice(0, 6).map((c) => (
+            <li key={c.id}>
+              <Link href={ctx.href(`/c/${c.slug}`)} className="flex h-full min-h-20 items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 font-bold transition hover:border-[var(--p)]">
+                <span>{ctx.name(c)}</span><span className="text-xs font-medium text-slate-500">{c.productCount}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  },
+
+  Products({ ctx, products, heading, moreHref, id }) {
+    return (
+      <section aria-labelledby={id}>
+        <div className="mb-4 flex items-end justify-between border-b-2 border-slate-200">
+          <h2 id={id} className="-mb-0.5 border-b-2 border-[var(--p)] pb-2 text-xl font-extrabold">{heading}</h2>
+          <Link href={moreHref} className="pb-2 text-sm font-bold text-[var(--p)]">{ctx.t('viewAll')}</Link>
+        </div>
+        {products.length ? (
+          <ul className={modernElectronics.ui.grid}>
+            {products.map((p, i) => <li key={p.id}><modernElectronics.Card ctx={ctx} product={p} priority={i < 4} /></li>)}
           </ul>
-        </section>
-        <section aria-labelledby="featured">
-          <div className="mb-4 flex items-end justify-between border-b-2 border-slate-200">
-            <h2 id="featured" className="-mb-0.5 border-b-2 border-[var(--p)] pb-2 text-xl font-extrabold">{heading}</h2>
-            <Link href={moreHref} className="pb-2 text-sm font-bold text-[var(--p)]">{ctx.t('viewAll')}</Link>
-          </div>
-          {products.length ? (
-            <ul className={modernElectronics.ui.grid}>
-              {products.map((p, i) => <li key={p.id}><modernElectronics.Card ctx={ctx} product={p} priority={i < 4} /></li>)}
-            </ul>
-          ) : <p className={modernElectronics.ui.muted}>{ctx.t('emptyStore')}</p>}
-        </section>
-      </div>
+        ) : <p className={modernElectronics.ui.muted}>{ctx.t('emptyStore')}</p>}
+      </section>
     );
   },
 

@@ -100,7 +100,7 @@ describe('themes: draft, preview, publish', () => {
     await t.http().post(`/v1/stores/${A}/theme/draft`).set(alice.auth).send({ themeId: 'perfume-boutique', settings: { ...custom, announcement: { ar: '<b>x</b>', en: '' } } }).expect(400);
     await t.http().post(`/v1/stores/${A}/theme/draft`).set(alice.auth).send({ themeId: 'made-up', settings: custom }).expect(400);
     const bobCat = await t.http().post(`/v1/stores/${B}/categories`).set(bob.auth).send({ nameEn: 'Mugs' }).expect(201);
-    const res = await t.http().post(`/v1/stores/${A}/theme/draft`).set(alice.auth).send({ themeId: 'perfume-boutique', settings: { ...custom, featuredCategoryId: bobCat.body.id } }).expect(400);
+    const res = await t.http().post(`/v1/stores/${A}/theme/draft`).set(alice.auth).send({ themeId: 'perfume-boutique', settings: { ...custom, sections: custom.sections.map((x) => (x.type === 'products' ? { ...x, categoryId: bobCat.body.id } : x)) } }).expect(400);
     expect(res.body.message).toBe('category_not_found');
   });
 
@@ -151,6 +151,25 @@ describe('themes: draft, preview, publish', () => {
     await t.http().post(`/v1/stores/${A}/theme/publish`).set(alice.auth).send({ themeId: 'perfume-boutique' }).expect(200);
     const back = await sf('/store').expect(200);
     expect(back.body.theme).toMatchObject({ id: 'perfume-boutique', settings: { colors: custom.colors, announcement: { en: 'Free shipping' } } });
+  });
+
+  it('every publish is recorded as a version that can be restored into the draft', async () => {
+    const list = await t.http().get(`/v1/stores/${A}/theme/versions/perfume-boutique`).set(alice.auth).expect(200);
+    expect(list.body.length).toBeGreaterThanOrEqual(2);
+    const first = list.body[list.body.length - 1];
+    expect(first.sections.length).toBeGreaterThan(0);
+    // Newest first; the oldest one is the first publish (before the announcement was added).
+    await t.http().post(`/v1/stores/${A}/theme/versions/perfume-boutique/${first.id}/restore`).set(alice.auth).expect(200);
+    const overview = await t.http().get(`/v1/stores/${A}/theme`).set(alice.auth).expect(200);
+    const mine = overview.body.themes.find((x: { id: string }) => x.id === 'perfume-boutique');
+    expect(mine.draft.announcement.en).toBe('');
+    expect((await sf('/store').expect(200)).body.theme.settings.announcement.en).toBe('Free shipping'); // live untouched
+    await t.http().post(`/v1/stores/${A}/theme/versions/perfume-boutique/${first.id.replace(/.$/, '0')}/restore`).set(alice.auth).expect(404);
+    await t.http().post(`/v1/stores/${A}/theme/versions/not-a-theme/${first.id}/restore`).set(alice.auth).expect(400);
+    // Another merchant cannot see or restore these versions.
+    await t.http().get(`/v1/stores/${A}/theme/versions/perfume-boutique`).set(bob.auth).expect(404);
+    // Put the draft back so later tests are unaffected.
+    await t.http().post(`/v1/stores/${A}/theme/publish`).set(alice.auth).send({ themeId: 'perfume-boutique' }).expect(200);
   });
 
   it('theme and launch actions need the right permission and are audited', async () => {

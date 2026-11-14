@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma, TxClient } from '@mtjari/db';
 import { THEMES, THEME_IDS, isThemeId, resolveThemeSettings, type ThemeDraftInput, type ThemeId } from '@mtjari/shared';
 import { AuditService } from '../audit/audit.service';
@@ -51,9 +51,11 @@ export class ThemeService {
 
   async saveDraft(t: TenantContext, input: ThemeDraftInput, meta: RequestMeta) {
     await this.tx(t, async (tx) => {
-      if (input.settings.featuredCategoryId) {
-        const cat = await tx.category.findFirst({ where: { storeId: t.storeId, id: input.settings.featuredCategoryId }, select: { id: true } });
-        if (!cat) throw new BadRequestException('category_not_found');
+      // Every category a product section points at must belong to this store.
+      const wanted = [...new Set(input.settings.sections.flatMap((x) => (x.type === 'products' && x.categoryId ? [x.categoryId] : [])))];
+      if (wanted.length) {
+        const found = await tx.category.count({ where: { storeId: t.storeId, id: { in: wanted } } });
+        if (found !== wanted.length) throw new BadRequestException('category_not_found');
       }
       await tx.storeTheme.upsert({
         where: { storeId_themeId: { storeId: t.storeId, themeId: input.themeId } },
@@ -77,7 +79,39 @@ export class ThemeService {
         update: { draft: settings, published: settings, publishedAt: new Date() },
       });
       await tx.store.update({ where: { id: t.storeId }, data: { themeId } });
+      await tx.storeThemeVersion.create({ data: { storeId: t.storeId, themeId, settings, createdBy: t.userId } });
       await this.audit.record(tx, { storeId: t.storeId, actorUserId: t.userId, action: 'theme.published', entityType: 'theme', entityId: undefined, metadata: { themeId, previousThemeId: before.themeId }, meta });
+    });
+    return this.overview(t);
+  }
+
+  /** The settings that went live each time this theme was published, newest first. */
+  async versions(t: TenantContext, themeId: ThemeId) {
+    const rows = await this.tx(t, (tx) => tx.storeThemeVersion.findMany({
+      where: { storeId: t.storeId, themeId }, orderBy: { createdAt: 'desc' }, take: 30, select: { id: true, createdAt: true, createdBy: true, settings: true },
+    }));
+    return rows.map((r) => {
+      const s = resolveThemeSettings(themeId, r.settings);
+      return { id: r.id, createdAt: r.createdAt, createdBy: r.createdBy, sections: s.sections.map((x) => x.type), colors: s.colors };
+    });
+  }
+
+  /** Loads an older published version into the draft. Nothing goes live until it is published again. */
+  async restoreVersion(t: TenantContext, themeId: ThemeId, versionId: string, meta: RequestMeta) {
+    await this.tx(t, async (tx) => {
+      const v = await tx.storeThemeVersion.findFirst({ where: { storeId: t.storeId, themeId, id: versionId } });
+      if (!v) throw new NotFoundException('version_not_found');
+      const settings = resolveThemeSettings(themeId, v.settings);
+      // Categories may have been deleted since; a product section pointing at one shows the newest products instead.
+      const ids = [...new Set(settings.sections.flatMap((x) => (x.type === 'products' && x.categoryId ? [x.categoryId] : [])))];
+      const alive = new Set((ids.length ? await tx.category.findMany({ where: { storeId: t.storeId, id: { in: ids } }, select: { id: true } }) : []).map((c) => c.id));
+      const restored = { ...settings, sections: settings.sections.map((x) => (x.type === 'products' && x.categoryId && !alive.has(x.categoryId) ? { ...x, categoryId: null } : x)) };
+      await tx.storeTheme.upsert({
+        where: { storeId_themeId: { storeId: t.storeId, themeId } },
+        create: { storeId: t.storeId, themeId, draft: json(restored) },
+        update: { draft: json(restored) },
+      });
+      await this.audit.record(tx, { storeId: t.storeId, actorUserId: t.userId, action: 'theme.version_restored', entityType: 'theme', entityId: undefined, metadata: { themeId, versionId }, meta });
     });
     return this.overview(t);
   }

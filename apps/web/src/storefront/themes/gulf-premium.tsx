@@ -108,50 +108,59 @@ export const gulfPremium: Theme = {
     );
   },
 
-  Home({ ctx, products, heading, moreHref }) {
+  homeWrap: '',
+
+  Hero({ ctx }) {
     const { title, subtitle } = heroText(ctx);
     return (
-      <>
-        <section className="relative overflow-hidden border-b border-[var(--p)]/15 bg-[#f3efe4]">
-          <Lattice className="absolute inset-0 opacity-[0.07]" />
-          <div className="relative mx-auto max-w-6xl px-5 py-14 sm:py-20">
-            <div className={`${frame} mx-auto max-w-3xl bg-[#fbfaf6]`}>
-              <div className="px-6 py-12 text-center sm:px-12 sm:py-16">
-                <h1 className="text-4xl font-bold leading-[1.4] text-[var(--p)] sm:text-6xl sm:leading-[1.35]">{title}</h1>
-                <div className="mx-auto my-6 max-w-xs"><Divider /></div>
-                {subtitle ? <p className="mx-auto max-w-xl text-lg leading-9 text-[#445050]">{subtitle}</p> : null}
-                <Link href={ctx.href('/products')} className={`${btn} mt-8`}>{ctx.t('shopNow')}</Link>
-              </div>
+      <section className="relative overflow-hidden border-b border-[var(--p)]/15 bg-[#f3efe4]">
+        <Lattice className="absolute inset-0 opacity-[0.07]" />
+        <div className="relative mx-auto max-w-6xl px-5 py-14 sm:py-20">
+          <div className={`${frame} mx-auto max-w-3xl bg-[#fbfaf6]`}>
+            <div className="px-6 py-12 text-center sm:px-12 sm:py-16">
+              <h1 className="text-4xl font-bold leading-[1.4] text-[var(--p)] sm:text-6xl sm:leading-[1.35]">{title}</h1>
+              <div className="mx-auto my-6 max-w-xs"><Divider /></div>
+              {subtitle ? <p className="mx-auto max-w-xl text-lg leading-9 text-[#445050]">{subtitle}</p> : null}
+              <Link href={ctx.href('/products')} className={`${btn} mt-8`}>{ctx.t('shopNow')}</Link>
             </div>
           </div>
+        </div>
+      </section>
+    );
+  },
+
+  Categories({ ctx }) {
+    if (!ctx.nav.length) return null;
+    return (
+        <section aria-label={ctx.t('categories')} className="mx-auto max-w-6xl px-5 pt-14">
+          <ul className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {ctx.nav.slice(0, 4).map((c) => (
+              <li key={c.id}>
+                <Link href={ctx.href(`/c/${c.slug}`)} className="group flex flex-col items-center gap-4 border border-[#e4dfd2] bg-white px-4 py-8 text-center transition hover:border-[var(--p)]">
+                  <span aria-hidden className="relative grid size-12 place-items-center">
+                    <span className="absolute inset-0 border border-[var(--a)]" /><span className="absolute inset-0 rotate-45 border border-[var(--p)] transition group-hover:rotate-[135deg]" />
+                  </span>
+                  <span className="font-semibold">{ctx.name(c)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
-        {ctx.nav.length ? (
-          <section aria-label={ctx.t('categories')} className="mx-auto max-w-6xl px-5 pt-14">
-            <ul className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              {ctx.nav.slice(0, 4).map((c) => (
-                <li key={c.id}>
-                  <Link href={ctx.href(`/c/${c.slug}`)} className="group flex flex-col items-center gap-4 border border-[#e4dfd2] bg-white px-4 py-8 text-center transition hover:border-[var(--p)]">
-                    <span aria-hidden className="relative grid size-12 place-items-center">
-                      <span className="absolute inset-0 border border-[var(--a)]" /><span className="absolute inset-0 rotate-45 border border-[var(--p)] transition group-hover:rotate-[135deg]" />
-                    </span>
-                    <span className="font-semibold">{ctx.name(c)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        <section aria-labelledby="featured" className="mx-auto max-w-6xl px-5 pt-16">
-          <div className="mb-8 text-center">
-            <h2 id="featured" className="text-3xl font-bold text-[var(--p)]">{heading}</h2>
-            <div className="mx-auto mt-4 max-w-[12rem]"><Divider /></div>
-          </div>
-          {products.length ? (
-            <ul className={gulfPremium.ui.grid}>{products.map((p, i) => <li key={p.id}><gulfPremium.Card ctx={ctx} product={p} priority={i < 4} /></li>)}</ul>
-          ) : <p className="text-center text-sm text-[#6b7474]">{ctx.t('emptyStore')}</p>}
-          <p className="mt-10 text-center"><Link href={moreHref} className={gulfPremium.ui.buttonGhost}>{ctx.t('viewAll')}</Link></p>
-        </section>
-      </>
+    );
+  },
+
+  Products({ ctx, products, heading, moreHref, id }) {
+    return (
+      <section aria-labelledby={id} className="mx-auto max-w-6xl px-5 pt-16">
+        <div className="mb-8 text-center">
+          <h2 id={id} className="text-3xl font-bold text-[var(--p)]">{heading}</h2>
+          <div className="mx-auto mt-4 max-w-[12rem]"><Divider /></div>
+        </div>
+        {products.length ? (
+          <ul className={gulfPremium.ui.grid}>{products.map((p, i) => <li key={p.id}><gulfPremium.Card ctx={ctx} product={p} priority={i < 4} /></li>)}</ul>
+        ) : <p className="text-center text-sm text-[#6b7474]">{ctx.t('emptyStore')}</p>}
+        <p className="mt-10 text-center"><Link href={moreHref} className={gulfPremium.ui.buttonGhost}>{ctx.t('viewAll')}</Link></p>
+      </section>
     );
   },
 

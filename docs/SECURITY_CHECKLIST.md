@@ -131,3 +131,5 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, not 
 - Images uploaded with the local storage driver live on one server's disk; use the S3 driver before running more than one API instance.
 - Rate-limit counters and the web tier's refresh single-flight are in process memory. Fine for one instance of each; both move to Redis before horizontal scaling (Phase 5, when Redis is introduced).
 - `MAIL_TRANSPORT=log` exists for local development and does not deliver mail; production startup rejects it.
+- ✅ Builder preview: framing is allowed only with a valid-shaped `?pv=` token and only from the dashboard origin (`frame-ancestors`); the token is sent as a header, the API verifies signature, store and expiry. All other pages stay `X-Frame-Options: DENY`.
+- ✅ Theme version history is append-only for the app role and isolated per store by RLS.

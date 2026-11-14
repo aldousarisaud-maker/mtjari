@@ -148,16 +148,17 @@ model Store {
   updatedAt     DateTime    @updatedAt @map("updated_at")
   deletedAt     DateTime?   @map("deleted_at")
 
-  domains     StoreDomain[]
-  roles       Role[]
-  memberships Membership[]
-  invitations Invitation[]
-  auditLogs   AuditLog[]
-  categories  Category[]
-  brands      Brand[]
-  products    Product[]
-  themes      StoreTheme[]
-  carts       Cart[]
+  domains          StoreDomain[]
+  roles            Role[]
+  memberships      Membership[]
+  invitations      Invitation[]
+  auditLogs        AuditLog[]
+  categories       Category[]
+  brands           Brand[]
+  products         Product[]
+  themes           StoreTheme[]
+  themeVersions    StoreThemeVersion[]
+  carts            Cart[]
   deliveryZones    DeliveryZone[]
   checkoutSettings CheckoutSettings?
   paymentMethods   PaymentMethod[]
@@ -424,18 +425,18 @@ model ProductVariant {
 }
 
 model ProductMedia {
-  id         String   @id @default(uuid()) @db.Uuid
-  storeId    String   @map("store_id") @db.Uuid
-  productId  String   @map("product_id") @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String   @map("store_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
   /// Storage key prefix; rendered sizes live at `${keyBase}-${width}.webp`.
-  keyBase    String   @map("key_base")
-  widths     Int[]
-  width      Int
-  height     Int
-  altAr      String?  @map("alt_ar")
-  altEn      String?  @map("alt_en")
-  position   Int      @default(0)
-  createdAt  DateTime @default(now()) @map("created_at")
+  keyBase   String   @map("key_base")
+  widths    Int[]
+  width     Int
+  height    Int
+  altAr     String?  @map("alt_ar")
+  altEn     String?  @map("alt_en")
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
 
   product Product @relation(fields: [storeId, productId], references: [storeId, id], onDelete: Cascade)
 
@@ -507,6 +508,23 @@ model StoreTheme {
 
   @@unique([storeId, themeId])
   @@map("store_themes")
+}
+
+/// Every time a theme is published, the settings that went live. The builder lists them and can load one back into the draft.
+/// Rows are only ever added (and removed with the store).
+model StoreThemeVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String   @map("store_id") @db.Uuid
+  themeId   String   @map("theme_id")
+  settings  Json
+  /// The member who published it (no foreign key: the history outlives the membership).
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, themeId, createdAt(sort: Desc)])
+  @@map("store_theme_versions")
 }
 
 /// Anonymous shopping cart, identified by a random token kept in an httpOnly cookie (only its hash is stored).

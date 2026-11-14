@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
-  PERMISSIONS, cartAddSchema, cartUpdateSchema, checkoutSchema, type CheckoutInput, storefrontProductsQuerySchema, themeDraftSchema, themePublishSchema,
+  PERMISSIONS, cartAddSchema, isThemeId, cartUpdateSchema, checkoutSchema, type CheckoutInput, storefrontProductsQuerySchema, themeDraftSchema, themePublishSchema,
   type StorefrontProductsQuery, type ThemeDraftInput, type ThemeId,
 } from '@mtjari/shared';
 import { Public } from '../auth/decorators';
@@ -15,6 +15,10 @@ import { StorefrontService } from './storefront.service';
 import { ThemeService } from './theme.service';
 
 const uuid = new ParseUUIDPipe({ version: '4' });
+const themeParam = (v: string): ThemeId => {
+  if (!isThemeId(v)) throw new BadRequestException('unknown_theme');
+  return v;
+};
 
 /**
  * Public shop API. No login: the shop is chosen by hostname and every query
@@ -93,6 +97,14 @@ export class ThemeController {
 
   @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Post('theme/publish') @HttpCode(200)
   publish(@Tenant() t: TenantContext, @Body(new ZodPipe(themePublishSchema)) body: { themeId: ThemeId }, @Meta() meta: RequestMeta) { return this.themes.publish(t, body.themeId, meta); }
+
+  @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Get('theme/versions/:themeId')
+  versions(@Tenant() t: TenantContext, @Param('themeId') themeId: string) { return this.themes.versions(t, themeParam(themeId)); }
+
+  @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Post('theme/versions/:themeId/:versionId/restore') @HttpCode(200)
+  restore(@Tenant() t: TenantContext, @Param('themeId') themeId: string, @Param('versionId', uuid) versionId: string, @Meta() meta: RequestMeta) {
+    return this.themes.restoreVersion(t, themeParam(themeId), versionId, meta);
+  }
 
   @RequirePermission(PERMISSIONS.THEMES_MANAGE) @Post('theme/preview-token') @HttpCode(200)
   preview(@Tenant() t: TenantContext, @Body(new ZodPipe(themePublishSchema)) body: { themeId: ThemeId }) { return this.themes.previewToken(t, body.themeId); }

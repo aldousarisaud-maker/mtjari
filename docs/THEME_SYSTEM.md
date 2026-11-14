@@ -66,6 +66,8 @@ Every theme must pass the shared contract suite: renders all required templates 
 
 ## Visual builder (Phase 6)
 
+Stage 1 (sections, drag and drop, undo/redo, device preview, version history) is implemented; the preview frame uses a `?pv=<signed token>` URL whose token travels in a request header (never a cookie) and is the only case where a shop page may be framed, and only by the dashboard (`frame-ancestors`). Typography, header/footer builders and custom CSS below are still target design.
+
 Editor iframe renders the real storefront in draft mode and talks to the dashboard shell with `postMessage` (origin-checked). Features: drag and drop sections, device preview widths, colour and typography editors driven by the theme's settings schema, header/footer builders, custom pages, draft/publish, version history, undo/redo.
 
 **Custom CSS** is parsed (PostCSS) and filtered by allow-list: scoped under the store root, no `@import`, no `url()` to other origins, no `position: fixed` overlays over checkout, size limit. It is never injected into checkout payment steps.

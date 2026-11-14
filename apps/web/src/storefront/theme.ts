@@ -36,7 +36,12 @@ export interface Theme {
   ui: ThemeUi;
   buy: BuyClasses;
   Layout: (p: { ctx: Ctx; children: ReactNode }) => ReactNode;
-  Home: (p: { ctx: Ctx; products: ProductCard[]; heading: string; moreHref: string }) => ReactNode;
+  /** Wrapper around all home sections (class names). */
+  homeWrap: string;
+  /** Home page blocks. The merchant orders them; each theme only draws them. */
+  Hero: (p: { ctx: Ctx; /** A product with a picture, for themes that show one in the hero. */ star?: ProductCard }) => ReactNode;
+  Categories: (p: { ctx: Ctx }) => ReactNode;
+  Products: (p: { ctx: Ctx; products: ProductCard[]; heading: string; moreHref: string; id: string }) => ReactNode;
   Card: (p: { ctx: Ctx; product: ProductCard; priority?: boolean }) => ReactNode;
   Product: (p: { ctx: Ctx; product: ProductDetail; buyBox: ReactNode }) => ReactNode;
 }

@@ -16,7 +16,8 @@ export async function shopApi<T>(host: string, path: string, opts: { method?: st
   const h = await headers();
   const hdrs: Record<string, string> = { 'x-store-host': host };
   const cart = jar.get(CART_COOKIE)?.value;
-  const preview = jar.get(PREVIEW_COOKIE)?.value;
+  // The dashboard's embedded preview passes its token in this header (set only by the proxy); a normal preview uses the cookie.
+  const preview = h.get('x-mtj-preview') || jar.get(PREVIEW_COOKIE)?.value;
   if (cart) hdrs['x-cart-token'] = cart;
   if (preview) hdrs['x-preview-token'] = preview;
   const xff = h.get('x-forwarded-for');

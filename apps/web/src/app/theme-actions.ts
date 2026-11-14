@@ -34,33 +34,6 @@ async function openPreview(f: FormData): Promise<ActionState> {
   redirect(`${await shopOrigin(overview.data.host)}/${l}?preview=${encodeURIComponent(token.data.token)}`);
 }
 
-export async function saveThemeAction(_: ActionState, f: FormData): Promise<ActionState> {
-  const l = loc(f);
-  const limit = Number(str(f, 'homeProductLimit'));
-  const featured = str(f, 'featuredCategoryId');
-  const res = await api(`/v1/stores/${storeId(f)}/theme/draft`, {
-    method: 'POST',
-    body: {
-      themeId: themeId(f),
-      settings: {
-        colors: { primary: str(f, 'primary'), accent: str(f, 'accent') },
-        announcement: { ar: str(f, 'announcementAr'), en: str(f, 'announcementEn') },
-        hero: { titleAr: str(f, 'heroTitleAr'), titleEn: str(f, 'heroTitleEn'), subtitleAr: str(f, 'heroSubtitleAr'), subtitleEn: str(f, 'heroSubtitleEn') },
-        featuredCategoryId: featured || null,
-        homeProductLimit: Number.isInteger(limit) ? limit : 8,
-      },
-    },
-  });
-  if (!res.ok) {
-    // Validation errors name the rule that failed (invalid_color, invalid_text...).
-    const issue = (res.data as { issues?: { message?: string }[] } | null)?.issues?.[0]?.message;
-    return { error: errorText(l, issue && /^[a-z_]+$/.test(issue) ? issue : res.code) };
-  }
-  revalidatePath(page(f));
-  if (str(f, 'intent') === 'preview') return openPreview(f);
-  return { ok: t(l, 'th.saved') };
-}
-
 export async function previewThemeAction(_: ActionState, f: FormData): Promise<ActionState> {
   return openPreview(f);
 }

@@ -42,7 +42,13 @@ const PREVIEW_COOKIE = 'mtj_preview';
  */
 function shopProxy(req: NextRequest, host: string) {
   const { pathname, searchParams } = req.nextUrl;
-  const internal = (path: string) => NextResponse.rewrite(new URL(`/s/${encodeURIComponent(host)}${path}${req.nextUrl.search}`, req.url));
+  // ?pv=<token>: the dashboard's embedded preview. The token rides in a request header only (no cookie: browsers drop
+  // third-party cookies in iframes), and the API still verifies its signature, store and expiry.
+  const pv = searchParams.get('pv');
+  const hdrs = new Headers(req.headers);
+  if (pv && /^[\w.-]{20,300}$/.test(pv)) hdrs.set('x-mtj-preview', pv);
+  else hdrs.delete('x-mtj-preview');
+  const internal = (path: string) => NextResponse.rewrite(new URL(`/s/${encodeURIComponent(host)}${path}${req.nextUrl.search}`, req.url), { request: { headers: hdrs } });
   if (pathname === '/robots.txt' || pathname === '/sitemap.xml') return internal(pathname);
 
   // ?preview=<token> from the dashboard: keep it in an httpOnly cookie and clean the URL.

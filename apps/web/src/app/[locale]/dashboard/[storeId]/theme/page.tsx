@@ -1,15 +1,23 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DEFAULT_THEME_ID, PERMISSIONS, isThemeId, type ThemeId, type ThemeSettings } from '@mtjari/shared';
-import { launchStoreAction, previewThemeAction, publishThemeAction, saveThemeAction } from '@/app/theme-actions';
-import { ActionForm, SubmitButton } from '@/components/action-form';
-import { Badge, Card, Field, Input, Select, buttonClass } from '@/components/ui';
+import { launchStoreAction, previewThemeAction, publishThemeAction } from '@/app/theme-actions';
+import { Badge, Card, buttonClass } from '@/components/ui';
 import { api } from '@/lib/api';
-import { isLocale, t } from '@/lib/i18n';
+import { isLocale, t, type Key } from '@/lib/i18n';
+import { ThemeBuilder } from './builder';
 import { shopOrigin } from '@/storefront/api';
 import { can, getStore } from '../data';
 import { displayName, type CategoryOption } from '../products/product-fields';
 import { RowAction } from '../row-action';
+
+const LABEL_KEYS = [
+  'tb.sections', 'tb.add', 'tb.type.hero', 'tb.type.products', 'tb.type.categories', 'tb.type.banner', 'tb.type.text', 'tb.up', 'tb.down', 'tb.remove', 'tb.drag',
+  'tb.undo', 'tb.redo', 'tb.device.mobile', 'tb.device.tablet', 'tb.device.desktop', 'tb.preview', 'tb.refresh', 'tb.previewNote', 'tb.dirty', 'tb.saveDraft',
+  'tb.publish', 'tb.history', 'tb.noVersions', 'tb.restore', 'tb.titleAr', 'tb.titleEn', 'tb.category', 'tb.limit', 'tb.textAr', 'tb.textEn', 'tb.bodyAr', 'tb.bodyEn',
+  'tb.button', 'tb.maxSections', 'tb.colors', 'tb.heroAnn', 'tb.saving', 'tb.newest', 'tb.heroTexts', 'th.categoriesNote', 'th.primary', 'th.accent', 'th.heroTitleAr',
+  'th.heroTitleEn', 'th.heroSubAr', 'th.heroSubEn', 'th.announceAr', 'th.announceEn',
+] as const satisfies readonly Key[];
 
 interface ThemeRow {
   id: ThemeId; name: { ar: string; en: string }; sector: { ar: string; en: string }; description: { ar: string; en: string }; dark: boolean;
@@ -90,40 +98,15 @@ export default async function ThemePage({ params, searchParams }: { params: Prom
         </ul>
       </section>
 
-      <Card className="max-w-3xl">
-        <h2 className="mb-4 text-lg font-semibold">{t(l, 'th.settings')}: {selected.name[l]}</h2>
-        {/* key: switching theme remounts the form with that theme's stored values */}
-        <ActionForm action={saveThemeAction} key={selectedId}>
-          <input type="hidden" name="locale" value={l} />
-          <input type="hidden" name="storeId" value={store.id} />
-          <input type="hidden" name="themeId" value={selectedId} />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t(l, 'th.primary')} htmlFor="primary"><Input id="primary" name="primary" type="color" defaultValue={s.colors.primary} className="p-1" /></Field>
-            <Field label={t(l, 'th.accent')} htmlFor="accent"><Input id="accent" name="accent" type="color" defaultValue={s.colors.accent} className="p-1" /></Field>
-            <Field label={t(l, 'th.heroTitleAr')} htmlFor="heroTitleAr" hint={t(l, 'th.heroHint')}><Input id="heroTitleAr" name="heroTitleAr" dir="rtl" maxLength={90} defaultValue={s.hero.titleAr} /></Field>
-            <Field label={t(l, 'th.heroTitleEn')} htmlFor="heroTitleEn"><Input id="heroTitleEn" name="heroTitleEn" dir="ltr" maxLength={90} defaultValue={s.hero.titleEn} /></Field>
-            <Field label={t(l, 'th.heroSubAr')} htmlFor="heroSubtitleAr"><Input id="heroSubtitleAr" name="heroSubtitleAr" dir="rtl" maxLength={200} defaultValue={s.hero.subtitleAr} /></Field>
-            <Field label={t(l, 'th.heroSubEn')} htmlFor="heroSubtitleEn"><Input id="heroSubtitleEn" name="heroSubtitleEn" dir="ltr" maxLength={200} defaultValue={s.hero.subtitleEn} /></Field>
-            <Field label={t(l, 'th.announceAr')} htmlFor="announcementAr"><Input id="announcementAr" name="announcementAr" dir="rtl" maxLength={140} defaultValue={s.announcement.ar} /></Field>
-            <Field label={t(l, 'th.announceEn')} htmlFor="announcementEn"><Input id="announcementEn" name="announcementEn" dir="ltr" maxLength={140} defaultValue={s.announcement.en} /></Field>
-            <Field label={t(l, 'th.featured')} htmlFor="featuredCategoryId">
-              <Select id="featuredCategoryId" name="featuredCategoryId" defaultValue={s.featuredCategoryId ?? ''}>
-                <option value="">{t(l, 'th.featured.newest')}</option>
-                {(cats?.ok ? cats.data : []).map((c) => <option key={c.id} value={c.id}>{displayName(l, c)}</option>)}
-              </Select>
-            </Field>
-            <Field label={t(l, 'th.limit')} htmlFor="homeProductLimit">
-              <Select id="homeProductLimit" name="homeProductLimit" defaultValue={String(s.homeProductLimit)}>
-                {[4, 6, 8, 12, 16, 24].map((n) => <option key={n} value={n}>{n}</option>)}
-              </Select>
-            </Field>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <SubmitButton>{t(l, 'th.save')}</SubmitButton>
-            <button type="submit" name="intent" value="preview" className={buttonClass({ variant: 'ghost' })}>{t(l, 'th.savePreview')}</button>
-          </div>
-        </ActionForm>
-      </Card>
+      <section aria-labelledby="builder">
+        <h2 id="builder" className="mb-3 text-lg font-semibold">{t(l, 'th.settings')}: {selected.name[l]}</h2>
+        {/* key: switching theme remounts the builder with that theme's stored values */}
+        <ThemeBuilder
+          key={selectedId} locale={l} storeId={store.id} themeId={selectedId} initial={s} canPublish
+          categories={(cats?.ok ? cats.data : []).map((c) => ({ id: c.id, label: displayName(l, c) }))}
+          labels={Object.fromEntries(LABEL_KEYS.map((k) => [k, t(l, k)]))}
+        />
+      </section>
     </div>
   );
 }

@@ -91,30 +91,48 @@ export const coffeeHouse: Theme = {
     );
   },
 
-  Home({ ctx, products, heading, moreHref }) {
-    const { title, subtitle } = heroText(ctx);
-    const star = products.find((p) => p.images.length > 0);
-    return (
-      <div className="mx-auto max-w-6xl space-y-14 px-4 py-8">
-        <section className="relative grid items-center gap-8 overflow-hidden rounded-[3rem] bg-[var(--p)] p-8 text-[var(--on-p)] sm:p-14 md:grid-cols-[1.3fr_1fr]">
-          <div>
-            <h1 className="text-4xl font-bold leading-tight sm:text-6xl">{title}</h1>
-            {subtitle ? <p className="mt-5 max-w-md text-lg opacity-85">{subtitle}</p> : null}
-            <Link href={ctx.href('/products')} className="mt-8 inline-flex h-12 items-center rounded-full bg-[var(--a)] px-8 text-sm font-semibold text-[var(--on-a)] shadow-[0_6px_0_rgba(0,0,0,0.18)]">{ctx.t('shopNow')}</Link>
-          </div>
-          <div className={`relative mx-auto aspect-square w-56 sm:w-72 ${star ? '' : 'hidden md:block'}`}>
-            <div aria-hidden className="absolute inset-0 rounded-full bg-white/10" />
-            <div aria-hidden className="absolute -inset-4 rounded-full border-2 border-dashed border-white/25" />
-            {star ? (
-              <ProductImage image={star.images[0]} alt={imageAlt(ctx, star.images[0], ctx.name(star))} priority sizes="18rem"
-                className="relative size-full rounded-full object-cover" fallbackClass="relative size-full rounded-full bg-white/10" />
-            ) : null}
-          </div>
-        </section>
+  homeWrap: 'mx-auto max-w-6xl space-y-14 px-4 py-8',
 
-        <section aria-labelledby="menu" className={coffeeHouse.ui.panel}>
+  Hero({ ctx, star }) {
+    const { title, subtitle } = heroText(ctx);
+    return (
+      <section className="relative grid items-center gap-8 overflow-hidden rounded-[3rem] bg-[var(--p)] p-8 text-[var(--on-p)] sm:p-14 md:grid-cols-[1.3fr_1fr]">
+        <div>
+          <h1 className="text-4xl font-bold leading-tight sm:text-6xl">{title}</h1>
+          {subtitle ? <p className="mt-5 max-w-md text-lg opacity-85">{subtitle}</p> : null}
+          <Link href={ctx.href('/products')} className="mt-8 inline-flex h-12 items-center rounded-full bg-[var(--a)] px-8 text-sm font-semibold text-[var(--on-a)] shadow-[0_6px_0_rgba(0,0,0,0.18)]">{ctx.t('shopNow')}</Link>
+        </div>
+        <div className={`relative mx-auto aspect-square w-56 sm:w-72 ${star ? '' : 'hidden md:block'}`}>
+          <div aria-hidden className="absolute inset-0 rounded-full bg-white/10" />
+          <div aria-hidden className="absolute -inset-4 rounded-full border-2 border-dashed border-white/25" />
+          {star ? (
+            <ProductImage image={star.images[0]} alt={imageAlt(ctx, star.images[0], ctx.name(star))} priority sizes="18rem"
+              className="relative size-full rounded-full object-cover" fallbackClass="relative size-full rounded-full bg-white/10" />
+          ) : null}
+        </div>
+      </section>
+    );
+  },
+
+  Categories({ ctx }) {
+    if (!ctx.nav.length) return null;
+    return (
+      <section aria-label={ctx.t('categories')}>
+        <ul className="flex flex-wrap gap-3">
+          {ctx.nav.map((c) => (
+            <li key={c.id}><Link href={ctx.href(`/c/${c.slug}`)} className={coffeeHouse.ui.chip}>{ctx.name(c)}</Link></li>
+          ))}
+        </ul>
+      </section>
+    );
+  },
+
+  Products({ ctx, products, heading, moreHref, id }) {
+    return (
+      <>
+        <section aria-labelledby={id} className={coffeeHouse.ui.panel}>
           <div className="mb-6 flex items-end justify-between gap-4">
-            <h2 id="menu" className="text-2xl font-bold">{heading}</h2>
+            <h2 id={id} className="text-2xl font-bold">{heading}</h2>
             <Link href={moreHref} className="text-sm font-semibold text-[var(--p)]">{ctx.t('viewAll')}</Link>
           </div>
           {products.length ? (
@@ -131,13 +149,12 @@ export const coffeeHouse: Theme = {
             </ul>
           ) : <p className={coffeeHouse.ui.muted}>{ctx.t('emptyStore')}</p>}
         </section>
-
-        {products.length > 1 ? (
-          <section aria-label={ctx.t('newArrivals')}>
-            <ul className={coffeeHouse.ui.grid}>{products.slice(0, 6).map((p) => <li key={p.id}><coffeeHouse.Card ctx={ctx} product={p} /></li>)}</ul>
+        {products.length > 8 ? (
+          <section aria-label={heading}>
+            <ul className={coffeeHouse.ui.grid}>{products.slice(8).map((p) => <li key={p.id}><coffeeHouse.Card ctx={ctx} product={p} /></li>)}</ul>
           </section>
         ) : null}
-      </div>
+      </>
     );
   },
 

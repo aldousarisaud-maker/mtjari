@@ -79,22 +79,42 @@ export const luxuryFashion: Theme = {
     );
   },
 
-  Home({ ctx, products, heading, moreHref }) {
+  homeWrap: '',
+
+  Hero({ ctx }) {
     const { title, subtitle } = heroText(ctx);
+    return (
+      <section className="mx-auto max-w-6xl px-5 pb-4 pt-16 text-center sm:pt-24">
+        {subtitle ? <p className={`${caps} text-[var(--a)]`}>{subtitle}</p> : null}
+        <h1 className={`${serif} mx-auto mt-5 max-w-3xl text-5xl leading-tight sm:text-7xl`}>{title}</h1>
+        <div aria-hidden className="mx-auto mt-8 h-px w-16 bg-neutral-900" />
+        <Link href={ctx.href('/products')} className={`mt-8 inline-block border-b border-neutral-900 pb-1 ${caps}`}>{ctx.t('shopNow')}</Link>
+      </section>
+    );
+  },
+
+  Categories({ ctx }) {
+    if (!ctx.nav.length) return null;
+    return (
+      <section aria-label={ctx.t('categories')} className="mx-auto mt-16 max-w-6xl px-5">
+        <ul className="flex flex-wrap justify-center gap-x-10 gap-y-3">
+          {ctx.nav.map((c) => (
+            <li key={c.id}><Link href={ctx.href(`/c/${c.slug}`)} className={`${caps} border-b border-transparent pb-1 hover:border-neutral-900`}>{ctx.name(c)}</Link></li>
+          ))}
+        </ul>
+      </section>
+    );
+  },
+
+  Products({ ctx, products, heading, moreHref, id }) {
     const [lead, second, ...rest] = products;
     return (
       <>
-        <section className="mx-auto max-w-6xl px-5 pt-16 text-center sm:pt-24">
-          {subtitle ? <p className={`${caps} text-[var(--a)]`}>{subtitle}</p> : null}
-          <h1 className={`${serif} mx-auto mt-5 max-w-3xl text-5xl leading-tight sm:text-7xl`}>{title}</h1>
-          <div aria-hidden className="mx-auto mt-8 h-px w-16 bg-neutral-900" />
-          <Link href={ctx.href('/products')} className={`mt-8 inline-block border-b border-neutral-900 pb-1 ${caps}`}>{ctx.t('shopNow')}</Link>
-        </section>
         {lead ? (
           <section aria-label={heading} className="mx-auto mt-16 grid max-w-6xl gap-5 px-5 sm:grid-cols-2">
             {[lead, second].filter((p) => !!p).map((p, i) => (
               <Link key={p.id} href={ctx.href(`/p/${p.slug}`)} className={`group relative block ${i === 1 ? 'sm:mt-24' : ''}`}>
-                <ProductImage image={p.images[0]} alt={imageAlt(ctx, p.images[0], ctx.name(p))} priority sizes="(min-width:640px) 50vw, 100vw"
+                <ProductImage image={p.images[0]} alt={imageAlt(ctx, p.images[0], ctx.name(p))} sizes="(min-width:640px) 50vw, 100vw"
                   className="aspect-[3/4] w-full object-cover" fallbackClass="bg-neutral-100 text-neutral-400" />
                 <span className="mt-4 flex items-baseline justify-between gap-4">
                   <span className={`${serif} text-2xl`}>{ctx.name(p)}</span>
@@ -105,15 +125,15 @@ export const luxuryFashion: Theme = {
           </section>
         ) : null}
         {rest.length || !lead ? (
-        <section aria-labelledby="featured" className="mx-auto mt-24 max-w-6xl px-5">
-          <div className="mb-10 flex items-baseline justify-between border-b border-neutral-200 pb-4">
-            <h2 id="featured" className={`${serif} text-3xl`}>{heading}</h2>
-            <Link href={moreHref} className={`${caps} text-neutral-500 hover:text-neutral-900`}>{ctx.t('viewAll')}</Link>
-          </div>
-          {rest.length ? (
-            <ul className={luxuryFashion.ui.grid}>{rest.map((p) => <li key={p.id}><luxuryFashion.Card ctx={ctx} product={p} /></li>)}</ul>
-          ) : <p className="text-center text-sm text-neutral-500">{ctx.t('emptyStore')}</p>}
-        </section>
+          <section aria-labelledby={id} className="mx-auto mt-24 max-w-6xl px-5">
+            <div className="mb-10 flex items-baseline justify-between border-b border-neutral-200 pb-4">
+              <h2 id={id} className={`${serif} text-3xl`}>{heading}</h2>
+              <Link href={moreHref} className={`${caps} text-neutral-500 hover:text-neutral-900`}>{ctx.t('viewAll')}</Link>
+            </div>
+            {rest.length ? (
+              <ul className={luxuryFashion.ui.grid}>{rest.map((p) => <li key={p.id}><luxuryFashion.Card ctx={ctx} product={p} /></li>)}</ul>
+            ) : <p className="text-center text-sm text-neutral-500">{ctx.t('emptyStore')}</p>}
+          </section>
         ) : (
           <p className="mx-auto mt-16 max-w-6xl px-5 text-center"><Link href={moreHref} className={`${caps} text-neutral-500 hover:text-neutral-900`}>{ctx.t('viewAll')}</Link></p>
         )}

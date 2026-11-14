@@ -17,12 +17,14 @@ import { PaymentRegistry, type PaymentAdapter } from './payment-adapters';
 @Injectable()
 export class PaymentMethodsService {
   private readonly box: SecretBox;
+  private readonly publicUrl: string | null;
 
   constructor(
     private readonly prisma: PrismaService, private readonly audit: AuditService,
     private readonly registry: PaymentRegistry, @Inject(ENV) env: Env,
   ) {
     this.box = new SecretBox(env.ENCRYPTION_KEYS);
+    this.publicUrl = env.API_PUBLIC_URL ? env.API_PUBLIC_URL.replace(/\/+$/, '') : null;
   }
 
   private aad = (storeId: string, provider: string) => `payment:${storeId}:${provider}`;
@@ -74,7 +76,7 @@ export class PaymentMethodsService {
       }));
       const merged = { ...before.creds, ...input.credentials };
       if (!this.configured(adapter, merged)) throw new BadRequestException('payment_credentials_required');
-      checked = await adapter.checkCredentials(merged, before.store);
+      checked = await adapter.checkCredentials(merged, { ...before.store, webhookUrl: this.publicUrl ? `${this.publicUrl}/v1/webhooks/payments/${provider}/${t.storeId}` : null });
     }
     return this.prisma.tx(ctx, async (tx) => {
       const existing = await tx.paymentMethod.findUnique({ where: { storeId_provider: { storeId: t.storeId, provider } } });

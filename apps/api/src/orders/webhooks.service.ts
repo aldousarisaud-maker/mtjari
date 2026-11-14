@@ -29,6 +29,8 @@ export class WebhooksService {
     if (!credentials) throw new NotFoundException('not_found');
     // May call the provider, so it runs outside any database transaction.
     const event = await adapter.verifyWebhook({ rawBody, headers, credentials });
-    return this.prisma.tx({ storeId }, (tx) => this.settlement.apply(tx, storeId, provider, event, sha256(rawBody.toString('utf8'))));
+    const result = await this.prisma.tx({ storeId }, (tx) => this.settlement.apply(tx, storeId, provider, event, sha256(rawBody.toString('utf8'))));
+    await this.settlement.confirmWithProvider(adapter, credentials, event, result);
+    return result;
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { TxClient } from '@mtjari/db';
 import { AuditService } from '../audit/audit.service';
-import type { VerifiedWebhook } from './payment-adapters';
+import type { PaymentAdapter, VerifiedWebhook } from './payment-adapters';
 
 export type SettlementResult = { received: true; duplicate?: true; status?: 'PROCESSED' | 'IGNORED' | 'FAILED' };
 
@@ -18,6 +18,21 @@ export class PaymentSettlement {
   private readonly logger = new Logger('PaymentSettlement');
 
   constructor(private readonly audit: AuditService) {}
+
+  /**
+   * For providers that only authorize at first (Tabby): once the payment was verified and just recorded as
+   * paid, tell the provider to capture it. A failure is logged and does not undo the order, which is paid
+   * and confirmed; the merchant can capture from the provider's dashboard and the provider captures on its own after a while.
+   * Never runs for an event that was ignored, a duplicate, or refused (for example an amount mismatch).
+   */
+  async confirmWithProvider(adapter: PaymentAdapter, credentials: Record<string, string>, event: VerifiedWebhook, result: SettlementResult): Promise<void> {
+    if (!event.capture || !event.currency || event.outcome !== 'paid' || result.status !== 'PROCESSED' || !adapter.capture) return;
+    try {
+      await adapter.capture({ providerRef: event.providerRef, amount: event.capture.amount, currency: event.currency, credentials });
+    } catch (e) {
+      this.logger.error(`${adapter.id} payment ${event.providerRef} is paid but the capture failed: ${(e as Error).message}`);
+    }
+  }
 
   async apply(tx: TxClient, storeId: string, provider: string, event: VerifiedWebhook, payloadHash: string): Promise<SettlementResult> {
     const { count } = await tx.webhookEvent.createMany({

@@ -157,7 +157,7 @@ export class CheckoutService {
         if (adapter.kind === 'online') {
           const credentials = (await this.methods.credentials(tx, shop.storeId, adapter.id)) ?? {};
           // If the provider refuses or cannot be reached, the whole order is rolled back: no stock is held for a payment that never started.
-          ({ providerRef, redirectUrl } = await adapter.initiate!(this.initiateInput(shop, adapter.id, { id, number, total, locale: input.locale, name: input.customer.name, phone, email: input.customer.email || null }, credentials)));
+          ({ providerRef, redirectUrl } = await adapter.initiate!(this.initiateInput(shop, adapter.id, { id, number, total, locale: input.locale, name: input.customer.name, phone, email: input.customer.email || null, deliveryFee, items: lines.map((l) => ({ nameAr: l.variant.product.nameAr, nameEn: l.variant.product.nameEn, unitPrice: l.variant.price, quantity: l.quantity, sku: l.variant.sku })), address }, credentials)));
         }
         await tx.payment.create({ data: { storeId: shop.storeId, orderId: id, provider: adapter.id, amount: total, currency: shop.store.currency, providerRef } });
         await tx.cart.delete({ where: { id: cart.id } });
@@ -205,7 +205,12 @@ export class CheckoutService {
   }
 
   private initiateInput(
-    shop: ShopContext, provider: string, order: { id: string; number: number; total: number; locale: string; name: string; phone: string; email: string | null }, credentials: Record<string, string>,
+    shop: ShopContext, provider: string,
+    order: {
+      id: string; number: number; total: number; locale: string; name: string; phone: string; email: string | null; deliveryFee: number;
+      items: { nameAr: string | null; nameEn: string | null; unitPrice: number; quantity: number; sku: string | null }[]; address: unknown;
+    },
+    credentials: Record<string, string>,
   ): InitiateInput {
     const locale = order.locale === 'en' ? 'en' : 'ar';
     return {
@@ -213,8 +218,16 @@ export class CheckoutService {
       customer: { name: order.name, phone: order.phone, email: order.email, country: shop.store.country },
       returnUrl: `${this.shopOrigin(shop.host)}/${locale}/orders/${this.tokens.for(order.id).token}`,
       webhookUrl: this.env.API_PUBLIC_URL ? `${this.env.API_PUBLIC_URL.replace(/\/+$/, '')}/v1/webhooks/payments/${provider}/${shop.storeId}` : null,
-      credentials,
+      credentials, deliveryFee: order.deliveryFee,
+      items: order.items.map((i) => ({ title: ((locale === 'en' ? i.nameEn : i.nameAr) ?? i.nameEn ?? i.nameAr ?? '-').slice(0, 200), quantity: i.quantity, unitPrice: i.unitPrice, sku: i.sku })),
+      address: CheckoutService.addressOf(order.address),
     };
+  }
+
+  private static addressOf(a: unknown): InitiateInput['address'] {
+    const o = (a ?? null) as Record<string, unknown> | null;
+    if (!o || typeof o['area'] !== 'string' || typeof o['block'] !== 'string' || typeof o['street'] !== 'string' || typeof o['building'] !== 'string') return null;
+    return { area: o['area'], block: o['block'], street: o['street'], building: o['building'] };
   }
 
   /** Public origin of a shop host, following the scheme and port of the platform's own URL. */
@@ -259,6 +272,7 @@ export class CheckoutService {
       where: { storeId: shop.storeId, accessTokenHash: sha256(token) },
       select: {
         id: true, number: true, status: true, paymentStatus: true, paymentProvider: true, total: true, locale: true, customerName: true, customerPhone: true, customerEmail: true,
+        deliveryFee: true, address: true, items: { orderBy: { id: 'asc' }, select: { nameAr: true, nameEn: true, unitPrice: true, quantity: true, sku: true } },
         payments: { orderBy: { createdAt: 'desc' }, select: { id: true, status: true, providerRef: true } },
       },
     });
@@ -283,7 +297,8 @@ export class CheckoutService {
     const candidates = named ? [named, ...own.filter((p) => p !== named)] : own;
     for (const payment of candidates) {
       const event = await adapter.fetchStatus({ providerRef: payment.providerRef, credentials });
-      await this.tx(shop, (tx) => this.settlement.apply(tx, shop.storeId, adapter.id, event, sha256(event.eventId)));
+      const result = await this.tx(shop, (tx) => this.settlement.apply(tx, shop.storeId, adapter.id, event, sha256(event.eventId)));
+      await this.settlement.confirmWithProvider(adapter, credentials, event, result);
       if (event.outcome === 'paid') break;
     }
     return { checked: candidates.length > 0 };
@@ -301,7 +316,7 @@ export class CheckoutService {
       if (!adapter?.initiate || !credentials) throw new ConflictException('payment_method_unavailable');
       if (order.payments.length >= 5) throw new ConflictException('too_many_payment_attempts');
       const { providerRef, redirectUrl } = await adapter.initiate(this.initiateInput(
-        shop, adapter.id, { id: order.id, number: order.number, total: order.total, locale: order.locale, name: order.customerName, phone: order.customerPhone, email: order.customerEmail }, credentials,
+        shop, adapter.id, { id: order.id, number: order.number, total: order.total, locale: order.locale, name: order.customerName, phone: order.customerPhone, email: order.customerEmail, deliveryFee: order.deliveryFee, items: order.items, address: order.address }, credentials,
       ));
       await tx.payment.create({ data: { storeId: shop.storeId, orderId: order.id, provider: adapter.id, amount: order.total, currency: shop.store.currency, providerRef } });
       await tx.orderEvent.create({ data: { storeId: shop.storeId, orderId: order.id, type: 'payment_retry' } });

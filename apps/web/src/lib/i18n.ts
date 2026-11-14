@@ -405,6 +405,9 @@ const ar = {
   'd.help.hesabe': 'من لوحة تحكم حسابي (Hesabe) خذ رمز التاجر ورمز الوصول ومفتاح التشفير ومفتاح IV، وابدأ بالبيئة التجريبية. المتجر يجب أن يكون بالدينار الكويتي. عند الحفظ نجري طلب دفع تجريبي بمبلغ 1.000 د.ك للتحقق من المفاتيح، وسيظهر في لوحتك كعملية غير مدفوعة ولا يمكن لأحد دفعها. المفاتيح لا تُعرض بعد حفظها.',
   'd.modeHint.hesabe.test': 'البيئة التجريبية: لا تُخصم مبالغ حقيقية من العملاء.',
   'd.modeHint.hesabe.live': 'بيئة حقيقية: المدفوعات حقيقية وتذهب إلى حسابك في حسابي.',
+  'd.help.tabby': 'من لوحة تابي (merchant.tabby.ai) خذ المفتاح السري (يبدأ بـ sk_test_ للتجريبي) ورمز التاجر. اختر نطاق الحساب. نتحقق من المفتاحين مع تابي عند الحفظ ونسجّل عنوان إشعارات الدفع تلقائياً. بعد تفويض الدفع نؤكده لدى تابي (capture) تلقائياً. العميل يحتاج بريداً إلكترونياً ليستخدم تابي. المفاتيح لا تُعرض بعد حفظها.',
+  'd.modeHint.tabby.test': 'مفتاح تجريبي: لا تُخصم مبالغ حقيقية من العملاء.',
+  'd.modeHint.tabby.live': 'مفتاح حقيقي: المدفوعات حقيقية وتذهب إلى حسابك في تابي.',
 } as const;
 
 export type Key = keyof typeof ar;
@@ -810,6 +813,9 @@ const en: Record<Key, string> = {
   'd.help.hesabe': 'From your Hesabe dashboard take the merchant code, access code, secret key and IV key, and start with the sandbox environment. The store must sell in KWD. When you save, we create one 1.000 KWD checkout to verify the keys; it appears in your panel as an unpaid transaction that nobody can pay. The keys are never shown again.',
   'd.modeHint.hesabe.test': 'Sandbox environment: shoppers are not charged real money.',
   'd.modeHint.hesabe.live': 'Production environment: payments are real and go to your Hesabe account.',
+  'd.help.tabby': 'From your Tabby dashboard (merchant.tabby.ai) take the secret key (it starts with sk_test_ for testing) and the merchant code, and choose the account region. Both are checked with Tabby when you save, and our payment-notification address is registered automatically. Once Tabby authorizes a payment we capture it automatically. Shoppers need an email address to use Tabby. The keys are never shown again.',
+  'd.modeHint.tabby.test': 'Test key: shoppers are not charged real money.',
+  'd.modeHint.tabby.live': 'Live key: payments are real and go to your Tabby account.',
 };
 
 const dict: Record<Locale, Record<Key, string>> = { ar, en };

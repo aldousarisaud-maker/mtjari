@@ -66,8 +66,8 @@ export default async function DeliveryPage({ params }: { params: Promise<{ local
                   {m.mode ? <Badge className={m.mode === 'live' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} data-testid={`mode-${m.provider}`}>{t(l, `d.mode.${m.mode}`)}</Badge> : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">{t(l, `d.kind.${m.kind}`)}</p>
-                {m.mode ? <p className="mt-1 text-xs text-slate-500">{t(l, m.provider === 'myfatoorah' || m.provider === 'hesabe' ? `d.modeHint.${m.provider}.${m.mode}` : `d.modeHint.${m.mode}`)}</p> : null}
-                {(m.provider === 'tap' || m.provider === 'myfatoorah' || m.provider === 'hesabe') && !m.enabled ? <p className="mt-2 text-sm text-slate-600">{t(l, `d.help.${m.provider}`)}</p> : null}
+                {m.mode ? <p className="mt-1 text-xs text-slate-500">{t(l, m.provider === 'myfatoorah' || m.provider === 'hesabe' || m.provider === 'tabby' ? `d.modeHint.${m.provider}.${m.mode}` : `d.modeHint.${m.mode}`)}</p> : null}
+                {(m.provider === 'tap' || m.provider === 'myfatoorah' || m.provider === 'hesabe' || m.provider === 'tabby') && !m.enabled ? <p className="mt-2 text-sm text-slate-600">{t(l, `d.help.${m.provider}`)}</p> : null}
                 <ActionForm action={setPaymentMethodAction} className="mt-3 space-y-3">
                   <Hidden /><input type="hidden" name="provider" value={m.provider} /><input type="hidden" name="enabled" value={m.enabled ? 'false' : 'true'} />
                   {/* Secrets are write-only: the stored value is never sent to the browser. */}

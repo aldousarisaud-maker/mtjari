@@ -14,15 +14,16 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return { title: pc.ctx.t('orderReceived'), robots: { index: false, follow: false }, referrer: 'no-referrer' };
 }
 
-export default async function OrderPage({ params, searchParams }: { params: Params; searchParams: Promise<{ tap_id?: string | string[]; paymentId?: string | string[]; data?: string | string[]; pay_error?: string | string[] }> }) {
+export default async function OrderPage({ params, searchParams }: { params: Params; searchParams: Promise<{ tap_id?: string | string[]; paymentId?: string | string[]; data?: string | string[]; payment_id?: string | string[]; pay_error?: string | string[] }> }) {
   const { host, locale, token } = await params;
   const q = await searchParams;
   const pc = await pageContext(host, locale);
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) notFound();
   // Back from the payment page. The parameter is only a hint: the API asks the provider what really happened.
-  // Tap adds `tap_id`, MyFatoorah adds `paymentId`, Hesabe adds an encrypted `data` we do not read.
-  if (q.tap_id !== undefined || q.paymentId !== undefined || q.data !== undefined) {
-    const ref = typeof q.tap_id === 'string' && /^chg_[A-Za-z0-9]{6,100}$/.test(q.tap_id) ? `?ref=${q.tap_id}` : '';
+  // Tap adds `tap_id`, MyFatoorah adds `paymentId`, Hesabe adds an encrypted `data` we do not read, Tabby adds `payment_id`.
+  if (q.tap_id !== undefined || q.paymentId !== undefined || q.data !== undefined || q.payment_id !== undefined) {
+    const tabby = typeof q.payment_id === 'string' && /^[0-9a-f-]{36}$/i.test(q.payment_id) ? q.payment_id : null;
+    const ref = typeof q.tap_id === 'string' && /^chg_[A-Za-z0-9]{6,100}$/.test(q.tap_id) ? `?ref=${q.tap_id}` : tabby ? `?ref=${tabby}` : '';
     const sync = await shopApi(pc.host, `/orders/${token}/sync-payment${ref}`, { method: 'POST' });
     if (sync.status === 404) notFound();
     redirect(`/${pc.ctx.locale}/orders/${token}${sync.ok ? '' : '?pay_error=payment_status_unknown'}`);

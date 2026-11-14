@@ -23,6 +23,8 @@ export interface VerifiedWebhook {
   /** Amount and currency the provider says it collected; compared with our record before anything is marked paid. */
   amount?: number;
   currency?: string;
+  /** Set when the provider holds the money as an authorization that the merchant must still confirm (capture). Acted on only after the payment was verified and recorded as paid. */
+  capture?: { amount: number };
 }
 
 /**
@@ -47,6 +49,12 @@ export interface InitiateInput {
   /** Public address of our webhook endpoint for this store and provider, or null when the API has no public address. */
   webhookUrl: string | null;
   credentials: Record<string, string>;
+  /** What was ordered, for providers that must see it (instalment providers do). */
+  items: { title: string; quantity: number; unitPrice: number; sku: string | null }[];
+  /** Minor units. */
+  deliveryFee: number;
+  /** Where it is delivered; null for pickup. */
+  address: { area: string; block: string; street: string; building: string } | null;
 }
 
 export interface PaymentAdapter {
@@ -64,7 +72,9 @@ export interface PaymentAdapter {
    * Called when a merchant saves credentials: rejects a malformed or refused key
    * (`invalid_payment_credentials`) and reports whether the key is a test or a live one.
    */
-  checkCredentials?(credentials: Record<string, string>, store: { currency: string }): Promise<{ mode: 'test' | 'live' }>;
+  checkCredentials?(credentials: Record<string, string>, store: { currency: string; webhookUrl?: string | null }): Promise<{ mode: 'test' | 'live' }>;
+  /** Online only: confirms an authorized payment to the provider so it is settled to the merchant. Idempotent per payment. */
+  capture?(input: { providerRef: string; amount: number; currency: string; credentials: Record<string, string> }): Promise<void>;
   /** Test or live, read from stored credentials without calling the provider. */
   mode?(credentials: Record<string, string>): 'test' | 'live' | null;
 }
@@ -581,6 +591,173 @@ export class HesabeAdapter implements PaymentAdapter {
   }
 }
 
+/**
+ * Tabby (https://docs.tabby.ai), instalments, redirect flow:
+ *  1. POST /api/v2/checkout creates a session and a payment (`CREATED`); the answer holds the
+ *     payment id and the hosted page address (`configuration.available_products.installments[0].web_url`).
+ *  2. The shopper pays there and returns to our success, cancel or failure address.
+ *  3. GET /api/v2/payments/{id} is the source of truth. `AUTHORIZED` means the money is reserved:
+ *     the order is marked paid and then the payment is captured (POST .../captures, idempotent by
+ *     reference_id) so Tabby settles it to the merchant. `CLOSED` with the full amount captured is
+ *     also paid. `REJECTED` and `EXPIRED` are failures.
+ * Each merchant enters their own secret key and merchant code; nothing is shared.
+ */
+export class TabbyAdapter implements PaymentAdapter {
+  static readonly URLS = { ai: 'https://api.tabby.ai', sa: 'https://api.tabby.sa' } as const;
+  readonly id = 'tabby';
+  readonly kind = 'online' as const;
+  readonly name = { ar: 'تابي (قسّمها على 4)', en: 'Tabby (pay in 4)' };
+  readonly credentialFields: readonly CredentialField[] = [
+    { key: 'secretKey', label: { ar: 'المفتاح السري (Secret Key)', en: 'Secret key' } },
+    { key: 'merchantCode', label: { ar: 'رمز التاجر (Merchant Code)', en: 'Merchant code' } },
+    {
+      key: 'region', label: { ar: 'نطاق الحساب', en: 'Account region' }, type: 'select',
+      options: [
+        { value: 'ai', label: { ar: 'الإمارات والكويت وبقية الدول (api.tabby.ai)', en: 'UAE, Kuwait and other countries (api.tabby.ai)' } },
+        { value: 'sa', label: { ar: 'السعودية (api.tabby.sa)', en: 'Saudi Arabia (api.tabby.sa)' } },
+      ],
+    },
+  ];
+  private readonly logger = new Logger('Tabby');
+  private static readonly PAYMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /** `overrideUrl` replaces both addresses; it is set only by the automated tests. */
+  constructor(private readonly overrideUrl?: string) {}
+
+  private keys(credentials: Record<string, string>) {
+    const secretKey = credentials['secretKey'] ?? '';
+    const merchantCode = credentials['merchantCode'] ?? '';
+    const region = credentials['region'];
+    if ((region !== 'ai' && region !== 'sa') || !/^sk_(test_)?[A-Za-z0-9_-]{8,200}$/.test(secretKey) || !/^[A-Za-z0-9_-]{2,64}$/.test(merchantCode)) {
+      throw new BadRequestException('invalid_payment_credentials');
+    }
+    return { secretKey, merchantCode, url: this.overrideUrl ?? TabbyAdapter.URLS[region] };
+  }
+
+  mode(credentials: Record<string, string>): 'test' | 'live' | null {
+    const k = credentials['secretKey'];
+    if (!k || !credentials['region']) return null;
+    return k.startsWith('sk_test_') ? 'test' : 'live';
+  }
+
+  private async call(k: { secretKey: string; url: string }, method: 'GET' | 'POST', path: string, body?: unknown, extra: Record<string, string> = {}): Promise<{ status: number; json: unknown }> {
+    try {
+      const res = await fetch(`${k.url}${path}`, {
+        method, signal: AbortSignal.timeout(10_000),
+        headers: { authorization: `Bearer ${k.secretKey}`, accept: 'application/json', ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...extra },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const text = await res.text();
+      let json: unknown = null;
+      try { json = JSON.parse(text); } catch { /* not JSON */ }
+      if (res.status >= 500) throw new BadGatewayException('payment_provider_unreachable');
+      return { status: res.status, json };
+    } catch (e) {
+      if (e instanceof BadGatewayException) throw e;
+      this.logger.warn(`Tabby ${method} ${path.split('/').slice(0, 4).join('/')} unreachable: ${(e as Error).name}`);
+      throw new BadGatewayException('payment_provider_unreachable');
+    }
+  }
+
+  private phone(input: { phone: string; country: string }): string {
+    const rule = PHONE_RULES[input.country];
+    const digits = input.phone.replace(/\D/g, '');
+    return rule && digits.startsWith(rule.dial) ? `+${digits}` : digits;
+  }
+
+  /** A minimal session (what Tabby documents for the eligibility check) proves the key and the merchant code together. It creates one unlisted `CREATED` payment that nobody can pay. */
+  async checkCredentials(credentials: Record<string, string>, store: { currency: string; webhookUrl?: string | null }) {
+    const k = this.keys(credentials);
+    const { status, json } = await this.call(k, 'POST', '/api/v2/checkout', {
+      payment: { amount: fromMinor(1000, store.currency), currency: store.currency, buyer: { email: 'key-check@mtjari.cc', phone: '+96550000000' } },
+      merchant_code: k.merchantCode,
+    });
+    const answer = (json ?? {}) as { status?: unknown };
+    // "rejected" only says this made-up buyer was not approved: the key and merchant code were accepted.
+    if (status !== 200 || (answer.status !== 'created' && answer.status !== 'rejected')) throw new BadRequestException('invalid_payment_credentials');
+    if (store.webhookUrl?.startsWith('https://')) await this.ensureWebhook(k, store.webhookUrl).catch((e: Error) => this.logger.warn(`Tabby webhook registration failed: ${e.message}`));
+    return { mode: this.mode(credentials)! };
+  }
+
+  /** Registers our notification address unless it is already registered. Notifications are only hints (the payment is always read back), and the shopper's return still works without them. */
+  private async ensureWebhook(k: { secretKey: string; merchantCode: string; url: string }, webhookUrl: string) {
+    const list = await this.call(k, 'GET', '/api/v1/webhooks', undefined, { 'x-merchant-code': k.merchantCode });
+    if (list.status === 200 && JSON.stringify(list.json ?? null).includes(webhookUrl)) return;
+    const res = await this.call(k, 'POST', '/api/v1/webhooks', { url: webhookUrl }, { 'x-merchant-code': k.merchantCode });
+    if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+  }
+
+  async initiate(input: InitiateInput) {
+    const k = this.keys(input.credentials);
+    if (!input.customer.email) throw new BadRequestException('payment_email_required');
+    const money = (n: number) => fromMinor(n, input.currency);
+    const a = input.address;
+    const { status, json } = await this.call(k, 'POST', '/api/v2/checkout', {
+      payment: {
+        amount: money(input.amount), currency: input.currency, description: `${input.storeName} #${input.orderNumber}`,
+        buyer: { name: input.customer.name, email: input.customer.email, phone: this.phone(input.customer) },
+        // Tabby requires an address; for pickup there is none, so the store name stands in.
+        shipping_address: { city: a?.area ?? input.storeName, address: a ? `${a.block}, ${a.street}, ${a.building}` : `Pickup - ${input.storeName}`, zip: '00000' },
+        order: {
+          reference_id: input.orderId, shipping_amount: money(input.deliveryFee),
+          items: input.items.map((i) => ({ title: i.title, quantity: i.quantity, unit_price: money(i.unitPrice), category: 'General', ...(i.sku ? { reference_id: i.sku } : {}) })),
+        },
+        buyer_history: { registered_since: new Date().toISOString(), loyalty_level: 0 },
+        order_history: [],
+      },
+      lang: input.locale, merchant_code: k.merchantCode,
+      merchant_urls: { success: input.returnUrl, cancel: input.returnUrl, failure: input.returnUrl },
+    });
+    if (status === 401 || status === 403) throw new BadGatewayException('payment_provider_rejected_credentials');
+    const body = (json ?? {}) as { status?: unknown; payment?: { id?: unknown }; configuration?: { available_products?: { installments?: { web_url?: unknown }[] } } };
+    const id = body.payment?.id;
+    const webUrl = body.configuration?.available_products?.installments?.[0]?.web_url;
+    if (status === 200 && body.status === 'rejected') throw new BadRequestException('payment_not_approved');
+    if (status !== 200 || body.status !== 'created' || typeof id !== 'string' || !TabbyAdapter.PAYMENT_ID.test(id) || typeof webUrl !== 'string' || !(webUrl.startsWith('https://') || (this.overrideUrl && webUrl.startsWith(`${this.overrideUrl}/`)))) {
+      this.logger.warn(`Tabby refused checkout for order ${input.orderId}: HTTP ${status}`);
+      throw new BadGatewayException('payment_provider_error');
+    }
+    return { providerRef: id, redirectUrl: webUrl };
+  }
+
+  async fetchStatus(input: { providerRef: string; credentials: Record<string, string> }): Promise<VerifiedWebhook> {
+    if (!TabbyAdapter.PAYMENT_ID.test(input.providerRef)) throw new BadRequestException('invalid_payment_reference');
+    const k = this.keys(input.credentials);
+    const { status, json } = await this.call(k, 'GET', `/api/v2/payments/${input.providerRef}`);
+    const p = (json ?? {}) as { id?: unknown; status?: unknown; amount?: unknown; currency?: unknown; captures?: unknown };
+    if (status !== 200 || typeof p.id !== 'string' || p.id.toLowerCase() !== input.providerRef.toLowerCase() || typeof p.status !== 'string'
+      || typeof p.amount !== 'string' || typeof p.currency !== 'string' || decimalsOf(p.currency) === null) throw new BadGatewayException('payment_provider_error');
+    const state = p.status.toUpperCase();
+    const amount = toMinor(p.amount, p.currency);
+    const captured = (Array.isArray(p.captures) ? p.captures : []).reduce((n: number, c: { amount?: unknown }) => n + (typeof c?.amount === 'string' ? toMinor(c.amount, p.currency as string) ?? 0 : 0), 0);
+    const base = { eventId: `${input.providerRef}:${state}`, type: `payment.${state.toLowerCase()}`, providerRef: input.providerRef, amount: amount ?? undefined, currency: (p.currency as string).toUpperCase() };
+    if (state === 'AUTHORIZED') return { ...base, outcome: 'paid', ...(captured === 0 && amount ? { capture: { amount } } : {}) };
+    // Closed without a full capture means the payment was cancelled, not paid.
+    if (state === 'CLOSED') return { ...base, outcome: amount !== null && captured === amount ? 'paid' : 'ignored' };
+    if (state === 'REJECTED' || state === 'EXPIRED') return { ...base, outcome: 'failed' };
+    return { ...base, outcome: 'ignored' };
+  }
+
+  async capture(input: { providerRef: string; amount: number; currency: string; credentials: Record<string, string> }) {
+    const k = this.keys(input.credentials);
+    const { status } = await this.call(k, 'POST', `/api/v2/payments/${input.providerRef}/captures`, {
+      amount: fromMinor(input.amount, input.currency),
+      // Derived from the payment, never from the clock, so every retry is the same capture.
+      reference_id: `capture-${input.providerRef}`,
+    });
+    if (status !== 200) throw new BadGatewayException(`tabby_capture_failed_${status}`);
+  }
+
+  /** The notification only names the payment (`id`); the answer comes from Tabby's payment API. */
+  async verifyWebhook(input: { rawBody: Buffer; headers: Record<string, string | string[] | undefined>; credentials: Record<string, string> }) {
+    let body: { id?: unknown };
+    try { body = JSON.parse(input.rawBody.toString('utf8')) as typeof body; } catch { throw new UnauthorizedException('invalid_payload'); }
+    const id = typeof body?.id === 'string' ? body.id : '';
+    if (!TabbyAdapter.PAYMENT_ID.test(id)) throw new UnauthorizedException('invalid_payload');
+    return this.fetchStatus({ providerRef: id, credentials: input.credentials });
+  }
+}
+
 @Injectable()
 export class PaymentRegistry {
   private readonly adapters = new Map<string, PaymentAdapter>();
@@ -590,6 +767,7 @@ export class PaymentRegistry {
     this.add(new TapAdapter(env.TAP_API_URL.replace(/\/+$/, '')));
     this.add(new MyFatoorahAdapter(env.MYFATOORAH_API_URL?.replace(/\/+$/, '')));
     this.add(new HesabeAdapter(env.HESABE_API_URL?.replace(/\/+$/, '')));
+    this.add(new TabbyAdapter(env.TABBY_API_URL?.replace(/\/+$/, '')));
     if (env.NODE_ENV === 'test') this.add(new TestGatewayAdapter());
   }
 

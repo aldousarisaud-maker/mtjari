@@ -1,6 +1,6 @@
 # Mtjari.cc — Payment Integrations
 
-Status: **Cash on Delivery, Tap Payments, MyFatoorah and Hesabe are built.** Tap and MyFatoorah were built from their official documentation and only partly checked on their real sandboxes (see their sections below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
+Status: **Cash on Delivery, Tap Payments, MyFatoorah, Hesabe and Tabby are built.** Tap and MyFatoorah were built from their official documentation and only partly checked on their real sandboxes (see their sections below for exactly what was and was not verified). The other providers are not started; their details below are from general knowledge and have **not** been re-verified against each provider's current documentation.
 
 ## Principles
 
@@ -82,6 +82,20 @@ Source: https://developer.hesabe.com (checkout, transaction enquiry, encryption 
 
 Not verified: see IMPLEMENTATION_PLAN.md (Hesabe).
 
+## Tabby (built)
+
+Source: https://docs.tabby.ai (checkout flow, payment processing, statuses, webhooks, OpenAPI file, read 2026-11-14).
+
+| Step | What happens |
+|---|---|
+| Merchant setup | Secret key (`sk_test_…` or live), merchant code, region (`api.tabby.ai` / `api.tabby.sa`). Encrypted, never returned. Saving runs the minimal session call and registers our webhook address. |
+| Checkout | Full session with buyer, address, items, shipping. The shopper needs an email. Redirect to `configuration.available_products.installments[0].web_url`. |
+| Shopper returns | Tabby appends `payment_id`. We do not trust it: the API reads the payments **it created for this order**. |
+| Paid | `AUTHORIZED` for our amount marks the order paid, then we capture it (idempotent). `CLOSED` counts only with the full amount captured. |
+| Notification | Only the payment `id` is taken from the body, then the payment API decides. |
+
+Not verified with real Tabby: everything (see IMPLEMENTATION_PLAN.md). Go-live also needs Tabby's QA review and promo snippets.
+
 ## Gateway manager features → where they live
 
 | Feature | Implementation |
@@ -105,7 +119,7 @@ Columns: what the provider is, what Mtjari needs from each merchant, and open qu
 | **Tap Payments** | Gateway/PSP | KW, SA, AE, BH, QA, OM | Tap business account, secret + publishable keys (test and live) | Current API version, webhook hash scheme, KNET/mada/Apple Pay enablement per account, marketplace vs direct |
 | **MyFatoorah** (built) | Gateway/PSP | KW, SA, AE, BH, QA, OM | MyFatoorah account, API token per country portal | Real `GetPaymentStatus` response, wrong-token status code, refund API |
 | **Hesabe** (built) | Gateway | KW | Merchant code, access code, secret key, IV | Paid-transaction enquiry shape, notification body, wrong-secret answer, refund API |
-| **Tabby** | BNPL | SA, AE, KW (confirm others) | Tabby merchant account, public + secret keys, merchant code per currency | Country/currency list, pre-scoring call, capture/close/refund flow, webhook auth header |
+| **Tabby** (built) | BNPL | SA, AE, KW (confirm others) | Tabby merchant account, public + secret keys, merchant code per currency | Country/currency list, pre-scoring call, capture/close/refund flow, webhook auth header |
 | **Tamara** | BNPL | SA, AE, KW (confirm others) | Tamara merchant account, API token, notification token | Order authorise/capture steps, webhook JWT verification, min/max amounts |
 | **Deema** | BNPL | KW (confirm others) | Deema merchant account and API key | Whether a public API is open to all merchants, webhook format, refund support |
 | **Taly** | BNPL | KW (confirm others) | Taly merchant account and credentials | Whether a public API exists or integration is by agreement only |

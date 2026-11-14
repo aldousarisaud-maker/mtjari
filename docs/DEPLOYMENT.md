@@ -47,6 +47,7 @@ pnpm --filter @mtjari/e2e e2e           # Playwright; needs `pnpm build` first
 | `STOREFRONT_THROTTLE_LIMIT` | API | Public shop API requests per minute per IP (default 600) |
 | `CHECKOUT_THROTTLE_LIMIT` | API | Orders placed per minute per IP (default 20) |
 | `API_PUBLIC_URL` | API | Public https address of the API, given to payment providers for notifications (e.g. `https://api.mtjari.cc`). Without it, online payments are confirmed only when the shopper returns to the shop |
+| `TABBY_API_URL` | API | Tests only: replaces Tabby's regional addresses. Leave unset in production |
 | `HESABE_API_URL` | API | Tests only: replaces Hesabe's sandbox and production addresses. Leave unset in production |
 | `MYFATOORAH_API_URL` | API | Tests only: replaces MyFatoorah's per-country API addresses. Leave unset in production |
 | `TAP_API_URL` | API | Tap API base address (default `https://api.tap.company`; changed only by tests) |

@@ -131,7 +131,7 @@ Mutation checks: removing the webhook amount check, the webhook signature check,
 - Address forms for countries other than Kuwait (phone rules exist for the six GCC countries; the address form is Kuwait-shaped).
 - Per-zone area lists, COD fee, COD limits per zone.
 
-## Phase 5 — Payment providers (in progress: Tap, MyFatoorah and Hesabe built, others not started)
+## Phase 5 — Payment providers (in progress: Tap, MyFatoorah, Hesabe and Tabby built, others not started)
 
 **Tap Payments: built.** Each merchant pastes their own Tap secret key in Dashboard → Delivery and payment; nothing is shared between stores and the platform holds no Tap account.
 
@@ -167,9 +167,17 @@ How it was verified, honestly:
 - **Real Hesabe sandbox, by hand on 2026-11-13**, with the public keys in Hesabe's documentation: the AES format, a checkout creation, an unpaid transaction enquiry giving 404, and a wrong access code giving 401. A probe with a wrong secret key was blocked by the tooling and was not run.
 - **Not verified with real Hesabe:** the enquiry answer for a paid or failed transaction (shape and status words are from the documentation), the notification body, the return parameters, what Hesabe answers to a wrong secret key, production, refunds. The failed-status word list is a guess to be confirmed.
 
-**Next providers** (not started): Tabby, Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+**Tabby: built** (instalments, "pay in 4"). Each merchant enters their own secret key and merchant code and chooses the account region (`api.tabby.ai` or `api.tabby.sa`); nothing is shared between merchants.
+- Checkout sends a full session (`POST /api/v2/checkout`): buyer, address, the ordered items and the delivery fee, with the server-computed total. Tabby needs an email, so checkout answers `payment_email_required` for a shopper without one, and `payment_not_approved` when Tabby declines the buyer; in both cases no order and no stock are taken.
+- An order is paid only after the API reads the payment back (`GET /api/v2/payments/{id}`) with the merchant's key and it is `AUTHORIZED` (or `CLOSED` with the full amount captured) for the same amount and currency. `REJECTED` and `EXPIRED` are failures; `CLOSED` without a capture (cancelled) is not paid. The notification body and the `payment_id` return parameter are only hints.
+- After a verified `AUTHORIZED` payment is recorded, the API captures it (`POST .../captures`, idempotent with `reference_id = capture-{payment id}`) so Tabby settles it. A capture is never attempted for an event that was ignored, a duplicate, or refused (amount mismatch). If the capture call fails the order stays paid and confirmed and the failure is logged; the merchant can capture from the Tabby dashboard and Tabby captures on its own after 21 days. There is no automatic retry yet.
+- Saving the keys sends the documented minimal session (a `created` or `rejected` answer both prove the key and merchant code; 401 means refused) and registers our notification address with Tabby unless it is already listed. Registration failure is logged and does not block saving.
+- **Automated tests** (16 API tests, 4 browser tests) run against a local stand-in (`apps/e2e/fake-tabby.mjs`) built from Tabby's documentation. Mutation checks (treat a cancelled payment as paid; capture on any event; never capture) make the tests fail.
+- **Not verified with real Tabby** (no test key exists in this project and none is public): everything. The paths, payload and response shapes come from docs.tabby.ai and its OpenAPI file only. Also unverified: that Kuwait merchants use `api.tabby.ai` (the docs name only a UAE and a KSA address), whether `KWD` is accepted for a given merchant code, the webhook-list response shape used to avoid duplicate registration, and refunds. Tabby requires its QA review and its on-site promo snippets before go-live; neither is built.
 
-Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/api` 214 (after Hesabe), Playwright 66.
+**Next providers** (not started): Tamara, Deema, Taly, each as one adapter behind the same interface. See PAYMENT_INTEGRATIONS.md.
+
+Tests after the MyFatoorah work: `packages/shared` 49, `packages/db` 41, `apps/api` 214 (after Hesabe), Playwright 66. After Tabby: `apps/api` 230, Playwright 70.
 
 ## Phase 6 — Remaining 20 templates and visual builder
 Section-based editor with drag and drop, device previews, colour and typography editors, header/footer builders, undo/redo, version history, sanitised custom CSS.
